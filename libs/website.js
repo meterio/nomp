@@ -11,8 +11,8 @@ var express = require('express');
 var bodyParser = require('body-parser');
 var compress = require('compression');
 
-var Stratum = require('stratum-pool');
-var util = require('stratum-pool/lib/util.js');
+var Stratum = require('meter-stratum-pool');
+var util = require('meter-stratum-pool/lib/util.js');
 
 var api = require('./api.js');
 

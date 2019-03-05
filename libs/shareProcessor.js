@@ -1,5 +1,5 @@
 var redis = require('redis');
-var Stratum = require('stratum-pool');
+var Stratum = require('meter-stratum-pool');
 
 
 
