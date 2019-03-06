@@ -33,6 +33,7 @@
     "dependencies": {
         "async": "1.5.2",
         "bignum": "^0.13.0",
+        "bluebird": "^3.5.3",
         "body-parser": "*",
         "colors": "*",
         "compression": "*",
@@ -40,13 +41,13 @@
         "dot": "*",
         "express": "*",
         "extend": "*",
+        "meter-stratum-pool": "0.1.0",
         "mysql": "*",
         "node-json-minify": "*",
         "node-watch": "0.5.9",
         "nonce": "*",
         "redis": "0.12.1",
-        "request": "^2.88.0",
-        "meter-stratum-pool": "0.1.0"
+        "request": "^2.88.0"
     },
     "engines": {
         "node": ">=0.10"
