@@ -1,7 +1,5 @@
-## This repo is looking for maintainers! Please reach out if interested.
-
---------
-
+##
+In addition to the code created by Meter Foundation, this code base contains code from various open source projects. It is currently provided for limited demonstration and testing only. The license term will be updated after the final review at the time of the official release.
 
 # NOMP ![NOMP Logo](http://zone117x.github.io/node-open-mining-portal/logo.svg "NOMP Logo")
 #### Node Open Mining Portal
@@ -16,6 +14,7 @@ This is beta software. All of the following are things that can change and break
 #### Paid Solution
 Usage of this software requires abilities with sysadmin, database admin, coin daemons, and sometimes a bit of programming. Running a production pool can literally be more work than a full-time job. 
 
+Payment should be disabled in meter project. The beneficiary address is meter Pos address, not recognized in Pow mining.
 
 **Coin switching & auto-exchanging for payouts in BTC/LTC** to miners is a feature that very likely will not be included in this project. 
 
@@ -141,30 +140,20 @@ include `bind 127.0.0.1` in your `redis.conf` file. Also it's a good idea to lea
 you are using - a good place to start with redis is [data persistence](http://redis.io/topics/persistence).
 
 
-#### 0) Setting up coin daemon
+#### 0) Setting up meter daemon
 Follow the build/install instructions for your coin daemon. Your coin.conf file should end up looking something like this:
 ```
 daemon=1
-rpcuser=litecoinrpc
-rpcpassword=securepassword
-rpcport=19332
+rpcuser=testuser
+rpcpassword=testpass
+rpcport=8332
 ```
-For redundancy, its recommended to have at least two daemon instances running in case one drops out-of-sync or offline,
-all instances will be polled for block/transaction updates and be used for submitting blocks. Creating a backup daemon
-involves spawning a daemon using the `-datadir=/backup` command-line argument which creates a new daemon instance with
-it's own config directory and coin.conf file. Learn about the daemon, how to use it and how it works if you want to be
-a good pool operator. For starters be sure to read:
-   * https://en.bitcoin.it/wiki/Running_bitcoind
-   * https://en.bitcoin.it/wiki/Data_directory
-   * https://en.bitcoin.it/wiki/Original_Bitcoin_client/API_Calls_list
-   * https://en.bitcoin.it/wiki/Difficulty
-
 #### 1) Downloading & Installing
 
 Clone the repository and run `npm update` for all the dependencies to be installed:
 
 ```bash
-git clone https://github.com/zone117x/node-open-mining-portal.git nomp
+git clone https://github.com/meterio/meter-nomp.gits
 cd nomp
 npm update
 ```
@@ -246,7 +235,7 @@ Explanation for each field:
         /* If you are using a reverse-proxy like nginx to display the website then set this to
            127.0.0.1 to not expose the port. */
         "host": "0.0.0.0",
-        "port": 80,
+        "port": 8088,
         /* Used for displaying stratum connection data on the Getting Started page. */
         "stratumHost": "cryppit.com",
         "stats": {
@@ -343,16 +332,14 @@ Inside the `coins` directory, ensure a json file exists for your coin. If it doe
 Here is an example of the required fields:
 ````javascript
 {
-    "name": "Litecoin",
-    "symbol": "ltc",
-    "algorithm": "scrypt",
+    "name": "Meter",
+    "symbol": "MTR",
+    "algorithm": "sha256",
 
     /* Magic value only required for setting up p2p block notifications. It is found in the daemon
        source code as the pchMessageStart variable.
        For example, litecoin mainnet magic: http://git.io/Bi8YFw
        And for litecoin testnet magic: http://git.io/NXBYJA */
-    "peerMagic": "fbc0b6db", //optional
-    "peerMagicTestnet": "fcc1b7dc" //optional
 
     //"txMessages": false, //options - defaults to false
 
@@ -373,7 +360,7 @@ Description of options:
 ````javascript
 {
     "enabled": true, //Set this to false and a pool will not be created from this config file
-    "coin": "litecoin.json", //Reference to coin config file in 'coins' directory
+    "coin": "meter.json", //Reference to coin config file in 'coins' directory
 
     "address": "mi4iBXbBsydtcc5yFmsff2zCFVX4XG7qJc", //Address to where block rewards are given
 
@@ -390,8 +377,12 @@ Description of options:
         "22851477d63a085dbc2398c8430af1c09e7343f6": 0.1
     },
 
+    /* this is Pos beneficiary. It is 20 bytes address. Mining reward goes to this address in Pos ssytem. */
+    "rewardBeneficiary": "0a05c2d862ca051010698b69b54278cbaf945ccb",
+
+    /* payment must be disable */
     "paymentProcessing": {
-        "enabled": true,
+        "enabled": false,
 
         /* Every this many seconds get submitted blocks from redis, use daemon RPC to check
            their confirmation status, if confirmed then get shares from redis that contributed
@@ -408,7 +399,7 @@ Description of options:
            be able to confirm blocks or send out payments. */
         "daemon": {
             "host": "127.0.0.1",
-            "port": 19332,
+            "port": 8332,
             "user": "testuser",
             "password": "testpass"
         }
@@ -418,6 +409,10 @@ Description of options:
        be configured to use its own pool difficulty and variable difficulty settings. varDiff is
        optional and will only be used for the ports you configure it for. */
     "ports": {
+        "3008": {
+            "diff": 1
+        },
+
         "3032": { //A port for your miners to connect to
             "diff": 32, //the pool difficulty for this port
 
@@ -431,8 +426,16 @@ Description of options:
                 "variancePercent": 30 //Allow time to very this % from target without retargeting
             }
         },
-        "3256": { //Another port for your miners to connect to, this port does not use varDiff
-            "diff": 256 //The pool difficulty
+        "3256": { //Another port for your miners to connect to, for ASIC miner 
+            "diff": 200000 //The pool difficulty
+            "varDiff": {
+                "minDiff": 100000,
+                "maxDiff": 2000000,
+                "targetTime": 15,
+                "retargetTime": 90,
+                "variancePercent": 30
+            }
+
         }
     },
 
@@ -440,7 +443,7 @@ Description of options:
     "daemons": [
         {   //Main daemon instance
             "host": "127.0.0.1",
-            "port": 19332,
+            "port": 8332,
             "user": "testuser",
             "password": "testpass"
         }
@@ -490,24 +493,7 @@ Description of options:
 You can create as many of these pool config files as you want (such as one pool per coin you which to operate).
 If you are creating multiple pools, ensure that they have unique stratum ports.
 
-For more information on these configuration options see the [pool module documentation](https://github.com/zone117x/node-stratum-pool#module-usage)
-
-
-
-##### [Optional, recommended] Setting up blocknotify
-1. In `config.json` set the port and password for `blockNotifyListener`
-2. In your daemon conf file set the `blocknotify` command to use:
-```
-node [path to cli.js] [coin name in config] [block hash symbol]
-```
-Example: inside `dogecoin.conf` add the line
-```
-blocknotify=node /home/nomp/scripts/cli.js blocknotify dogecoin %s
-```
-
-Alternatively, you can use a more efficient block notify script written in pure C. Build and usage instructions
-are commented in [scripts/blocknotify.c](scripts/blocknotify.c).
-
+For more information on these configuration options see the [pool module documentation](https://github.com/meterio/meter-stratum-pool)
 
 #### 3) Start the portal
 
@@ -527,42 +513,17 @@ output from NOMP.
 
 #### Upgrading NOMP
 When updating NOMP to the latest code its important to not only `git pull` the latest from this repo, but to also update
-the `node-stratum-pool` and `node-multi-hashing` modules, and any config files that may have been changed.
+the `meter-stratum-pool` and any config files that may have been changed.
 * Inside your NOMP directory (where the init.js script is) do `git pull` to get the latest NOMP code.
 * Remove the dependenices by deleting the `node_modules` directory with `rm -r node_modules`.
 * Run `npm update` to force updating/reinstalling of the dependencies.
-* Compare your `config.json` and `pool_configs/coin.json` configurations to the latest example ones in this repo or the ones in the setup instructions where each config field is explained. You may need to modify or add any new changes.
-
-Donations
----------
-To support development of this project feel free to donate :)
-
-* BTC: `1KRotMnQpxu3sePQnsVLRy3EraRFYfJQFR`
-* LTC: `LKfavSDJmwiFdcgaP1bbu46hhyiWw5oFhE`
-* VTC: `VgW4uFTZcimMSvcnE4cwS3bjJ6P8bcTykN`
-* MAX: `mWexUXRCX5PWBmfh34p11wzS5WX2VWvTRT`
-* QRK: `QehPDAhzVQWPwDPQvmn7iT3PoFUGT7o8bC`
-* DRK: `XcQmhp8ANR7okWAuArcNFZ2bHSB81jpapQ`
-* DOGE: `DBGGVtwAAit1NPZpRm5Nz9VUFErcvVvHYW`
-* Cryptsy Trade Key: `254ca13444be14937b36c44ba29160bd8f02ff76`
-
-Credits
--------
-* [Jerry Brady / mintyfresh68](https://github.com/bluecircle) - got coin-switching fully working and developed proxy-per-algo feature
-* [Tony Dobbs](http://anthonydobbs.com) - designs for front-end and created the NOMP logo
-* [LucasJones](//github.com/LucasJones) - got p2p block notify working and implemented additional hashing algos
-* [vekexasia](//github.com/vekexasia) - co-developer & great tester
-* [TheSeven](//github.com/TheSeven) - answering an absurd amount of my questions and being a very helpful gentleman
-* [UdjinM6](//github.com/UdjinM6) - helped implement fee withdrawal in payment processing
-* [Alex Petrov / sysmanalex](https://github.com/sysmanalex) - contributed the pure C block notify script
-* [svirusxxx](//github.com/svirusxxx) - sponsored development of MPOS mode
-* [icecube45](//github.com/icecube45) - helping out with the repo wiki
-* [Fcases](//github.com/Fcases) - ordered me a pizza <3
-* Those that contributed to [node-stratum-pool](//github.com/zone117x/node-stratum-pool#credits)
-
+* Compare your `config.json` and `pool_configs/meter.json` configurations to the latest example ones in this repo or the ones in the setup instructions where each config field is explained. You may need to modify or add any new changes.
 
 License
 -------
 Released under the GNU General Public License v2
 
 http://www.gnu.org/licenses/gpl-2.0.html
+
+In addition to the code created by Meter Foundation, this code base contains code from various open source projects. It is currently provided for limited demonstration and testing only. The license term will be updated after the final review at the time of the official release.
+
