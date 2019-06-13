@@ -1,8 +1,8 @@
 ##
 In addition to the code created by Meter Foundation, this code base contains code from various open source projects. It is currently provided for limited demonstration and testing only. The license term will be updated after the final review at the time of the official release.
 
-# NOMP ![NOMP Logo](http://zone117x.github.io/node-open-mining-portal/logo.svg "NOMP Logo")
-#### Node Open Mining Portal
+# Meter NOMP ![NOMP Logo](http://zone117x.github.io/node-open-mining-portal/logo.svg "NOMP Logo")
+#### Meter Node Open Mining Portal
 
 This portal is an extremely efficient, highly scalable, all-in-one, easy to setup cryptocurrency mining pool written
 entirely in Node.js. It contains a stratum poolserver; reward/payment/share processor; and a (*not yet completed*)
