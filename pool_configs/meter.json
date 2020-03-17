@@ -11,6 +11,8 @@
 
     "rewardBeneficiary": "0a05c2d862ca051010698b69b54278cbaf945ccb",
 
+    "multiVersion": true,
+
     "paymentProcessing": {
         "enabled": false,
         "paymentInterval": 20,
