@@ -138,7 +138,7 @@ module.exports = function(logger, poolConfig) {
       redisCommands.push([
         "sadd",
         coin + ":blocksPending",
-        [shareData.blockHash, shareData.txHash, shareData.height].join(":")
+        [shareData.blockHash, shareData.txHash, shareData.height, shareData.worker, dateNow].join(":")
       ]);
       redisCommands.push(["hincrby", coin + ":stats", "validBlocks", 1]);
     } else if (shareData.blockHash) {
