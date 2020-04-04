@@ -1,3 +1,6 @@
 node_modules/
 .idea/
 !pool_configs/litecoin_example.json
+
+# vscode config
+.vscode

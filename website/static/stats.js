@@ -1,10 +1,8 @@
 var poolWorkerData;
 var poolHashrateData;
-var poolBlockData;
 
 var poolWorkerChart;
 var poolHashrateChart;
-var poolBlockChart;
 
 var statData;
 var poolKeys;
@@ -27,23 +25,23 @@ function buildChartData() {
       var a = (pools[pName] = pools[pName] || {
         hashrate: [],
         workers: [],
-        blocks: []
+        // blocks: []
       });
       if (pName in statData[i].pools) {
         a.hashrate.push([time, statData[i].pools[pName].hashrate]);
         a.workers.push([time, statData[i].pools[pName].workerCount]);
-        a.blocks.push([time, statData[i].pools[pName].blocks.pending]);
+        // a.blocks.push([time, statData[i].pools[pName].blocks.pending]);
       } else {
         a.hashrate.push([time, 0]);
         a.workers.push([time, 0]);
-        a.blocks.push([time, 0]);
+        // a.blocks.push([time, 0]);
       }
     }
   }
 
   poolWorkerData = [];
   poolHashrateData = [];
-  poolBlockData = [];
+  // poolBlockData = [];
 
   for (var pool in pools) {
     poolWorkerData.push({
@@ -54,11 +52,28 @@ function buildChartData() {
       key: pool,
       values: pools[pool].hashrate
     });
-    poolBlockData.push({
-      key: pool,
-      values: pools[pool].blocks
-    });
+
+    $('#statsHashrateAvg' + pool).text(getReadableHashRateString(calculateAverageHashrate(pool)))
   }
+}
+
+function calculateAverageHashrate(pool) {
+  var count = 0;
+  var total = 1;
+  var avg = 0;
+  for (var i = 0; i < poolHashrateData.length; i++) {
+    count = 0;
+    for (var ii = 0; ii < poolHashrateData[i].values.length; ii++) {
+      if (pool == null || poolHashrateData[i].key === pool) {
+        count++;
+        avg += parseFloat(poolHashrateData[i].values[ii][1]);
+      }
+    }
+    if (count > total)
+      total = count;
+  }
+  avg = avg / total;
+  return avg;
 }
 
 function getReadableHashRateString(hashrate) {
@@ -111,41 +126,38 @@ function formatDate(date) {
   );
 }
 
-function displayBlocks(blocks) {
-  var elems = blocks.map(function(b) {
-    var date = new Date(0);
-    date.setUTCMilliseconds(b.time);
-    var line = String.format(
-      "<p class='line'><span class='unit'><b>height</b>: {0}</span> <span class='unit'><b>miner</b>: {1}</span> at <span class='unit'>{2}</span></p>",
-      pad_space(b.height, 5),
-      b.addr,
-      formatDate(date)
-    );
-    return $(line);
-  });
-  console.log(elems);
-  root = $("<div/>");
-  for (var i in elems) {
-    root.append(elems[i]);
-  }
-  console.log("ROOT");
-  console.log(root);
-  $("#blocks").html("");
-  $("#blocks").append(root);
-}
+// function displayBlocks(blocks) {
+//   var elems = blocks.map(function(b) {
+//     var date = new Date(0);
+//     date.setUTCMilliseconds(b.time);
+//     var line = String.format(
+//       "<p class='line'><span class='unit'><b>height</b>: {0}</span> <span class='unit'><b>miner</b>: {1}</span> at <span class='unit'>{2}</span></p>",
+//       pad_space(b.height, 5),
+//       b.addr,
+//       formatDate(date)
+//     );
+//     return $(line);
+//   });
+//   console.log(elems);
+//   root = $("<div/>");
+//   for (var i in elems) {
+//     root.append(elems[i]);
+//   }
+//   console.log("ROOT");
+//   console.log(root);
+//   $("#blocks").html("");
+//   $("#blocks").append(root);
+// }
 
 function displayCharts() {
   nv.addGraph(function() {
     poolWorkerChart = nv.models
       .stackedAreaChart()
-      .margin({ left: 40, right: 40 })
-      .x(function(d) {
-        return d[0];
-      })
-      .y(function(d) {
-        return d[1];
-      })
+      .margin({right: 100 })
+      .x(function(d) { return d[0]; })
+      .y(function(d) { return d[1]; })
       .useInteractiveGuideline(true)
+      .rightAlignYAxis(true) 
       .clipEdge(true);
 
     poolWorkerChart.xAxis.tickFormat(timeOfDayFormat);
@@ -162,7 +174,7 @@ function displayCharts() {
   nv.addGraph(function() {
     poolHashrateChart = nv.models
       .lineChart()
-      .margin({ left: 60, right: 40 })
+      .margin({ left: 80, right: 30 })
       .x(function(d) {
         return d[0];
       })
@@ -184,32 +196,11 @@ function displayCharts() {
     return poolHashrateChart;
   });
 
-  nv.addGraph(function() {
-    poolBlockChart = nv.models
-      .multiBarChart()
-      .x(function(d) {
-        return d[0];
-      })
-      .y(function(d) {
-        return d[1];
-      });
-
-    poolBlockChart.xAxis.tickFormat(timeOfDayFormat);
-
-    poolBlockChart.yAxis.tickFormat(d3.format("d"));
-
-    d3.select("#poolBlocks")
-      .datum(poolBlockData)
-      .call(poolBlockChart);
-
-    return poolBlockChart;
-  });
 }
 
 function TriggerChartUpdates() {
   poolWorkerChart.update();
   poolHashrateChart.update();
-  poolBlockChart.update();
 }
 
 nv.utils.windowResize(TriggerChartUpdates);
@@ -220,9 +211,9 @@ $.getJSON("/api/pool_stats", function(data) {
   displayCharts();
 });
 
-$.getJSON("/api/blocks", function(data) {
-  displayBlocks(data);
-});
+// $.getJSON("/api/blocks", function(data) {
+//   displayBlocks(data);
+// });
 
 statsSource.addEventListener("message", function(e) {
   var stats = JSON.parse(e.data);
@@ -258,16 +249,6 @@ statsSource.addEventListener("message", function(e) {
           poolHashrateData[i].values.push([
             time,
             pool in stats.pools ? stats.pools[pool].hashrate : 0
-          ]);
-          break;
-        }
-      }
-      for (var i = 0; i < poolBlockData.length; i++) {
-        if (poolBlockData[i].key === pool) {
-          poolBlockData[i].values.shift();
-          poolBlockData[i].values.push([
-            time,
-            pool in stats.pools ? stats.pools[pool].blocks.pending : 0
           ]);
           break;
         }
