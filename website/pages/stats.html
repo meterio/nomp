@@ -146,11 +146,9 @@
         <i class="fa fa-money"></i> Paid: <span id="statsTotalPaid{{=pool}}">{{=(parseFloat(it.stats.pools[pool].poolStats.totalPaid)).toFixed(8)}}</span> {{=it.stats.pools[pool].symbol}}</small>&nbsp;&nbsp;</span>
       </div>
       <div class="boxStatsList" style="margin-top: 9px;">
-        {{ var count = 0; }}
         <!-- {{=JSON.stringify(it.stats.pools)}} -->
         {{ for(var b in it.stats.pools[pool].pending.blocks) { }}
           {{ var block = it.stats.pools[pool].pending.blocks[b].split(':'); }}
-          {{ if (count++ > 8)  break; }}
           <div style="margin-bottom: 9px; background-color: #eeeeee; min-width:600px;"><i class="fa fa-bars"></i>
             <small>Block:</small>
                   {{=block[2]}}

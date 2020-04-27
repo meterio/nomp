@@ -1,4 +1,5 @@
 var fs = require('fs');
+var request = require('request');
 
 var redis = require('redis');
 var async = require('async');
@@ -62,56 +63,57 @@ function SetupForPool(logger, poolOptions, setupFinished){
 
     var paymentInterval;
 
-    async.parallel([
-        function(callback){
-            daemon.cmd('validateaddress', [poolOptions.address], function(result) {
-                if (result.error){
-                    logger.error(logSystem, logComponent, 'Error with payment processing daemon ' + JSON.stringify(result.error));
-                    callback(true);
-                }
-                else if (!result.response || !result.response.ismine) {
-                            daemon.cmd('getaddressinfo', [poolOptions.address], function(result) {
-                        if (result.error){
-                            logger.error(logSystem, logComponent, 'Error with payment processing daemon, getaddressinfo failed ... ' + JSON.stringify(result.error));
-                            callback(true);
-                        }
-                        else if (!result.response || !result.response.ismine) {
-                            logger.error(logSystem, logComponent,
-                                    'Daemon does not own pool address - payment processing can not be done with this daemon, '
-                                    + JSON.stringify(result.response));
-                            callback(true);
-                        }
-                        else{
-                            callback()
-                        }
-                    }, true);
-                }
-                else{
-                    callback()
-                }
-            }, true);
-        },
-        function(callback){
-            daemon.cmd('getbalance', [], function(result){
-                if (result.error){
-                    callback(true);
-                    return;
-                }
-                try {
-                    var d = result.data.split('result":')[1].split(',')[0].split('.')[1];
-                    magnitude = parseInt('10' + new Array(d.length).join('0'));
-                    minPaymentSatoshis = parseInt(processingConfig.minimumPayment * magnitude);
-                    coinPrecision = magnitude.toString().length - 1;
-                    callback();
-                }
-                catch(e){
-                    logger.error(logSystem, logComponent, 'Error detecting number of satoshis in a coin, cannot do payment processing. Tried parsing: ' + result.data);
-                    callback(true);
-                }
+    function validateAddress (callback){
+        daemon.cmd('validateaddress', [poolOptions.address], function(result) {
+            if (result.error){
+                logger.error(logSystem, logComponent, 'Error with payment processing daemon ' + JSON.stringify(result.error));
+                callback(true);
+            }
+            else if (!result.response || !result.response.ismine) {
+                daemon.cmd('getaddressinfo', [poolOptions.address], function(result) {
+                    if (result.error){
+                        logger.error(logSystem, logComponent, 'Error with payment processing daemon, getaddressinfo failed ... ' + JSON.stringify(result.error));
+                        callback(true);
+                    }
+                    else if (!result.response || !result.response.ismine) {
+                        logger.error(logSystem, logComponent,
+                            'Daemon does not own pool address - payment processing can not be done with this daemon, '
+                            + JSON.stringify(result.response));
+                        callback(true);
+                    }
+                    else{
+                        callback()
+                    }
+                }, true);
+            }
+            else{
+                callback()
+            }
+        }, true);
+    }
 
-            }, true, true);
-        }
-    ], function(err){
+    function getBalance(callback){
+        daemon.cmd('getbalance', [], function(result){
+            if (result.error){
+                callback(true);
+                return;
+            }
+            try {
+                var d = result.data.split('result":')[1].split(',')[0].split('.')[1];
+                magnitude = parseInt('10' + new Array(d.length).join('0'));
+                minPaymentSatoshis = parseInt(processingConfig.minimumPayment * magnitude);
+                coinPrecision = magnitude.toString().length - 1;
+                callback();
+            }
+            catch(e){
+                logger.error(logSystem, logComponent, 'Error detecting number of satoshis in a coin, cannot do payment processing. Tried parsing: ' + result.data);
+                callback(true);
+            }
+
+        }, true, true);
+    }
+
+    function asyncComplete(err){
         if (err){
             setupFinished(false);
             return;
@@ -125,8 +127,9 @@ function SetupForPool(logger, poolOptions, setupFinished){
         }, processingConfig.paymentInterval * 1000);
         setTimeout(processPayments, 100);
         setupFinished(true);
-    });
+    }
 
+    async.parallel([validateAddress, getBalance], asyncComplete);
 
 
 
@@ -137,6 +140,15 @@ function SetupForPool(logger, poolOptions, setupFinished){
     var coinsToSatoshies = function(coins){
         return coins * magnitude;
     };
+
+    function checkForDuplicateBlockHeight(rounds, height) {
+        var count = 0;
+        for (var i = 0; i < rounds.length; i++) {
+            if (rounds[i].height == height)
+                count++;
+        }
+        return count > 1;
+    }
 
     /* Deal with numbers in smallest possible units (satoshis) as much as possible. This greatly helps with accuracy
        when rounding and whatnot. When we are storing numbers for only humans to see, store in whole coin units. */
@@ -189,11 +201,91 @@ function SetupForPool(logger, poolOptions, setupFinished){
                             blockHash: details[0],
                             txHash: details[1],
                             height: details[2],
+                            minedby: details[3],
+                            time: details[4],
+                            duplicate: false,
                             serialized: r
                         };
                     });
 
-                    callback(null, workers, rounds);
+                    /* sort rounds by block hieght to pay in order */
+                    rounds.sort(function(a, b) {
+                        return a.height - b.height;
+                    });
+                    // find duplicate blocks by height
+                    // this can happen when two or more solutions are submitted at the same block height
+                    var duplicateFound = false;
+                    for (var i = 0; i < rounds.length; i++) {
+                        if (checkForDuplicateBlockHeight(rounds, rounds[i].height) === true) {
+                            rounds[i].duplicate = true;
+                            duplicateFound = true;
+                        }
+                    }
+
+                    if (duplicateFound) {
+                        var dups = rounds.filter(function(round){ return round.duplicate; });
+                        logger.warning(logSystem, logComponent, 'Duplicate pending blocks found: ' + JSON.stringify(dups));
+                        // attempt to find the invalid duplicates
+                        var rpcDupCheck = dups.map(function(r){
+                            return ['getblock', [r.blockHash]];
+                        });
+                        startRPCTimer();
+                        daemon.batchCmd(rpcDupCheck, function(error, blocks){
+                            endRPCTimer();
+                            if (error || !blocks) {
+                                logger.error(logSystem, logComponent, 'Error with duplicate block check rpc call getblock ' + JSON.stringify(error));
+                                return;
+                            }
+                            // look for the invalid duplicate block
+                            var validBlocks = {}; // hashtable for unique look up
+                            var invalidBlocks = []; // array for redis work
+                            blocks.forEach(function(block, i) {
+                                if (block && block.result) {
+                                    // invalid duplicate submit blocks have negative confirmations
+                                    if (block.result.confirmations < 0) {
+                                        logger.warning(logSystem, logComponent, 'Remove invalid duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                        // move from blocksPending to blocksDuplicate...
+                                        invalidBlocks.push(['smove', coin + ':blocksPending', coin + ':blocksDuplicate', dups[i].serialized]);
+                                    } else {
+                                        // block must be valid, make sure it is unique
+                                        if (validBlocks.hasOwnProperty(dups[i].blockHash)) {
+                                            // not unique duplicate block
+                                            logger.warning(logSystem, logComponent, 'Remove non-unique duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                            // move from blocksPending to blocksDuplicate...
+                                            invalidBlocks.push(['smove', coin + ':blocksPending', coin + ':blocksDuplicate', dups[i].serialized]);
+                                        } else {
+                                            // keep unique valid block
+                                            validBlocks[dups[i].blockHash] = dups[i].serialized;
+                                            logger.debug(logSystem, logComponent, 'Keep valid duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                        }
+                                    }
+                                }
+                            });
+                            // filter out all duplicates to prevent double payments
+                            rounds = rounds.filter(function(round){ return !round.duplicate; });
+                            // if we detected the invalid duplicates, move them
+                            if (invalidBlocks.length > 0) {
+                                // move invalid duplicate blocks in redis
+                                startRedisTimer();
+                                redisClient.multi(invalidBlocks).exec(function(error, kicked){
+                                    endRedisTimer();
+                                    if (error) {
+                                        logger.error(logSystem, logComponent, 'Error could not move invalid duplicate blocks in redis ' + JSON.stringify(error));
+                                    }
+                                    // continue payments normally
+                                    callback(null, workers, rounds);
+                                });
+                            } else {
+                                // notify pool owner that we are unable to find the invalid duplicate blocks, manual intervention required...
+                                logger.error(logSystem, logComponent, 'Unable to detect invalid duplicate blocks, duplicate block payments on hold.');
+                                // continue payments normally
+                                callback(null, workers, rounds);
+                            }
+                        });
+                    } else {
+                        // no duplicates, continue payments normally
+                        callback(null, workers, rounds);
+                    }
                 });
             },
 
@@ -218,7 +310,7 @@ function SetupForPool(logger, poolOptions, setupFinished){
                         return;
                     }
 
-                    var addressAccount;
+                    var addressAccount = "";
 
                     txDetails.forEach(function(tx, i){
 
@@ -228,7 +320,11 @@ function SetupForPool(logger, poolOptions, setupFinished){
                         }
 
                         var round = rounds[i];
+                        // update confirmations for round
+                        if (tx && tx.result)
+                            round.confirmations = parseInt((tx.result.confirmations || 0));
 
+                        // look for transaction errors
                         if (tx.error && tx.error.code === -5){
                             logger.warning(logSystem, logComponent, 'Daemon reports invalid transaction: ' + round.txHash);
                             round.category = 'kicked';
@@ -280,6 +376,8 @@ function SetupForPool(logger, poolOptions, setupFinished){
                         return true;
                     };
 
+                    // only pay max blocks at a time
+                    var payingBlocks = 0;
 
                     //Filter out all rounds that are immature (not confirmed or orphaned yet)
                     rounds = rounds.filter(function(r){
