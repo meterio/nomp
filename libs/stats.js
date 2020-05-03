@@ -7,7 +7,7 @@ var bluebird = require("bluebird");
 bluebird.promisifyAll(redis);
 
 var os = require("os");
-
+var Stratum = require('meter-stratum-pool');
 var algos = require("meter-stratum-pool/lib/algoProperties.js");
 
 function rediscreateClient(port, host, pass) {
@@ -16,6 +16,32 @@ function rediscreateClient(port, host, pass) {
     client.auth(pass);
   }
   return client;
+}
+
+var networkPoolState = {};
+
+function getMiningInfo(networkPoolState) {
+  var meterCoin = "meter";
+  var poolOptions = poolConfigs[meterCoin];
+  var processingConfig = poolOptions.paymentProcessing;
+  var _logSystem = 'Stats';
+  var _logComponent = meterCoin;
+  var daemon = new Stratum.daemon.interface([processingConfig.daemon], function(severity, message){
+    logger[severity](_logSystem, _logComponent, message);
+  });
+
+  setInterval(function () {
+    daemon.cmd('getmininginfo', params, function (result) {
+      if (!result || result.error || result[0].error || !result[0].response) {
+        logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
+        return;
+      } else {
+        networkPoolState = result;
+        logger.info(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
+      }
+
+    });
+  }, 1000 * 120);
 }
 
 module.exports = function(logger, portalConfig, poolConfigs) {
@@ -31,6 +57,9 @@ module.exports = function(logger, portalConfig, poolConfigs) {
 
   this.stats = {};
   this.statsString = "";
+
+  getMiningInfo(networkPoolState);
+
 
   setupStatsRedis();
   gatherStatHistory();
