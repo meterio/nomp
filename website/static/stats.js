@@ -1,7 +1,5 @@
-var poolWorkerData;
 var poolHashrateData;
 
-var poolWorkerChart;
 var poolHashrateChart;
 
 var statData;
@@ -23,31 +21,19 @@ function buildChartData() {
     for (var f = 0; f < poolKeys.length; f++) {
       var pName = poolKeys[f];
       var a = (pools[pName] = pools[pName] || {
-        hashrate: [],
-        workers: [],
-        // blocks: []
+        hashrate: []
       });
       if (pName in statData[i].pools) {
         a.hashrate.push([time, statData[i].pools[pName].hashrate]);
-        a.workers.push([time, statData[i].pools[pName].workerCount]);
-        // a.blocks.push([time, statData[i].pools[pName].blocks.pending]);
       } else {
         a.hashrate.push([time, 0]);
-        a.workers.push([time, 0]);
-        // a.blocks.push([time, 0]);
       }
     }
   }
 
-  poolWorkerData = [];
   poolHashrateData = [];
-  // poolBlockData = [];
 
   for (var pool in pools) {
-    poolWorkerData.push({
-      key: pool,
-      values: pools[pool].workers
-    });
     poolHashrateData.push({
       key: pool,
       values: pools[pool].hashrate
@@ -150,26 +136,6 @@ function formatDate(date) {
 // }
 
 function displayCharts() {
-  nv.addGraph(function() {
-    poolWorkerChart = nv.models
-      .stackedAreaChart()
-      .margin({right: 100 })
-      .x(function(d) { return d[0]; })
-      .y(function(d) { return d[1]; })
-      .useInteractiveGuideline(true)
-      .rightAlignYAxis(true) 
-      .clipEdge(true);
-
-    poolWorkerChart.xAxis.tickFormat(timeOfDayFormat);
-
-    poolWorkerChart.yAxis.tickFormat(d3.format("d"));
-
-    d3.select("#poolWorkers")
-      .datum(poolWorkerData)
-      .call(poolWorkerChart);
-
-    return poolWorkerChart;
-  });
 
   nv.addGraph(function() {
     poolHashrateChart = nv.models
@@ -199,7 +165,6 @@ function displayCharts() {
 }
 
 function TriggerChartUpdates() {
-  poolWorkerChart.update();
   poolHashrateChart.update();
 }
 
@@ -233,16 +198,6 @@ statsSource.addEventListener("message", function(e) {
     var time = stats.time * 1000;
     for (var f = 0; f < poolKeys.length; f++) {
       var pool = poolKeys[f];
-      for (var i = 0; i < poolWorkerData.length; i++) {
-        if (poolWorkerData[i].key === pool) {
-          poolWorkerData[i].values.shift();
-          poolWorkerData[i].values.push([
-            time,
-            pool in stats.pools ? stats.pools[pool].workerCount : 0
-          ]);
-          break;
-        }
-      }
       for (var i = 0; i < poolHashrateData.length; i++) {
         if (poolHashrateData[i].key === pool) {
           poolHashrateData[i].values.shift();

@@ -20,7 +20,7 @@ function rediscreateClient(port, host, pass) {
 
 var networkPoolState = {};
 
-function getMiningInfo(networkPoolState) {
+async function getMiningInfo(logger, poolConfigs, networkPoolState) {
   var meterCoin = "meter";
   var poolOptions = poolConfigs[meterCoin];
   var processingConfig = poolOptions.paymentProcessing;
@@ -30,14 +30,24 @@ function getMiningInfo(networkPoolState) {
     logger[severity](_logSystem, _logComponent, message);
   });
 
+  daemon.cmd('getmininginfo', null, function (result) {
+    if (!result || result.error || result[0].error || !result[0].response) {
+      logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
+      return;
+    } else {
+      networkPoolState = result;
+      logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
+    }
+  });
+
   setInterval(function () {
-    daemon.cmd('getmininginfo', params, function (result) {
+    daemon.cmd('getmininginfo', null, function (result) {
       if (!result || result.error || result[0].error || !result[0].response) {
         logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
         return;
       } else {
         networkPoolState = result;
-        logger.info(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
+        logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
       }
 
     });
@@ -58,7 +68,7 @@ module.exports = function(logger, portalConfig, poolConfigs) {
   this.stats = {};
   this.statsString = "";
 
-  getMiningInfo(networkPoolState);
+  getMiningInfo(logger, poolConfigs, networkPoolState);
 
 
   setupStatsRedis();
@@ -423,12 +433,12 @@ module.exports = function(logger, portalConfig, poolConfigs) {
                   validBlocks: replies[i + 2] ? replies[i + 2].validBlocks || 0 : 0,
                   invalidShares: replies[i + 2] ? replies[i + 2].invalidShares || 0 : 0,
                   totalPaid: replies[i + 2] ? replies[i + 2].totalPaid || 0 : 0,
-                  networkBlocks: replies[i + 2] ? (replies[i + 2].networkBlocks || 0) : 0,
-                  networkSols: replies[i + 2] ? (replies[i + 2].networkSols || 0) : 0, 
-                  networkSolsString: _this.getReadableHashRateString(replies[i + 2] ? (replies[i + 2].networkHashRate || 0) : 0), 
-                  networkHashRate: replies[i + 2] ? (replies[i + 2].networkSols || 0) : 0, 
-                  networkHashRateString: _this.getReadableHashRateString(replies[i + 2] ? (replies[i + 2].networkHashRate || 0) : 0),
-                  networkDiff: replies[i + 2] ? (replies[i + 2].networkDiff || 0) : 0,
+                  networkBlocks: networkPoolState.response ? (networkPoolState.response.blocks || 0) : 0,
+                  networkSols: networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0, 
+                  networkSolsString: _this.getReadableHashRateString(networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0), 
+                  networkHashRate: networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0,
+                  networkHashRateString: _this.getReadableHashRateString(networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0),
+                  networkDiff: networkPoolState.response ? (networkPoolState.response.difficulty || 0) : 0,
                   networkConnections: replies[i + 2] ? (replies[i + 2].networkConnections || 0) : 0,
                   networkVersion: replies[i + 2] ? (replies[i + 2].networkSubVersion || 0) : 0,
                   networkProtocolVersion: replies[i + 2] ? (replies[i + 2].networkProtocolVersion || 0) : 0
