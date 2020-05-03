@@ -20,7 +20,7 @@ function rediscreateClient(port, host, pass) {
 
 var networkPoolState = {};
 
-async function getMiningInfo(logger, poolConfigs, networkPoolState) {
+function getMiningInfo(logger, poolConfigs, networkPoolState) {
   var meterCoin = "meter";
   var poolOptions = poolConfigs[meterCoin];
   var processingConfig = poolOptions.paymentProcessing;
@@ -40,18 +40,18 @@ async function getMiningInfo(logger, poolConfigs, networkPoolState) {
     }
   });
 
-  setInterval(function () {
-    daemon.cmd('getmininginfo', null, function (result) {
-      if (!result || result.error || result[0].error || !result[0].response) {
-        logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
-        return;
-      } else {
-        networkPoolState = result;
-        logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
-      }
+  // setInterval(function () {
+  //   daemon.cmd('getmininginfo', null, function (result) {
+  //     if (!result || result.error || result[0].error || !result[0].response) {
+  //       logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
+  //       return;
+  //     } else {
+  //       networkPoolState = result;
+  //       logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
+  //     }
 
-    });
-  }, 1000 * 120);
+  //   });
+  // }, 1000 * 120);
 }
 
 module.exports = function(logger, portalConfig, poolConfigs) {
@@ -67,9 +67,6 @@ module.exports = function(logger, portalConfig, poolConfigs) {
 
   this.stats = {};
   this.statsString = "";
-
-  getMiningInfo(logger, poolConfigs, networkPoolState);
-
 
   setupStatsRedis();
   gatherStatHistory();
@@ -405,6 +402,8 @@ module.exports = function(logger, portalConfig, poolConfigs) {
             redisCommands.push(clonedTemplates);
           });
         });
+
+        getMiningInfo(logger, poolConfigs, networkPoolState);
 
         client.client.multi(redisCommands).exec(function(err, replies) {
           if (err) {
