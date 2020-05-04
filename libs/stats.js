@@ -18,42 +18,6 @@ function rediscreateClient(port, host, pass) {
   return client;
 }
 
-var networkPoolState = {};
-
-function getMiningInfo(logger, poolConfigs, networkPoolState) {
-  var meterCoin = "meter";
-  var poolOptions = poolConfigs[meterCoin];
-  var processingConfig = poolOptions.paymentProcessing;
-  var _logSystem = 'Stats';
-  var _logComponent = meterCoin;
-  var daemon = new Stratum.daemon.interface([processingConfig.daemon], function(severity, message){
-    logger[severity](_logSystem, _logComponent, message);
-  });
-
-  daemon.cmd('getmininginfo', null, function (result) {
-    if (!result || result.error || result[0].error || !result[0].response) {
-      logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
-      return;
-    } else {
-      networkPoolState = result;
-      logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
-    }
-  });
-
-  // setInterval(function () {
-  //   daemon.cmd('getmininginfo', null, function (result) {
-  //     if (!result || result.error || result[0].error || !result[0].response) {
-  //       logger.error(_logSystem, _logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
-  //       return;
-  //     } else {
-  //       networkPoolState = result;
-  //       logger.debug(_logSystem, _logComponent, 'Result of getmininginfo '+JSON.stringify(networkPoolState));
-  //     }
-
-  //   });
-  // }, 1000 * 120);
-}
-
 module.exports = function(logger, portalConfig, poolConfigs) {
   var _this = this;
 
@@ -155,6 +119,78 @@ module.exports = function(logger, portalConfig, poolConfigs) {
     }
     _this.statPoolHistory.push(data);
   }
+       
+  function cacheNetworkStats() { 
+    var coin = 'meter';
+    var logComponent = 'MiningInfo';
+    var poolOptions = poolConfigs[coin];
+    var processingConfig = poolOptions.paymentProcessing;
+    var daemon = new Stratum.daemon.interface([processingConfig.daemon], function(severity, message){
+      logger[severity](logSystem, logComponent, message);
+    });
+    var redisConfig = poolConfigs[coin].redis;
+    var client = rediscreateClient(redisConfig.port, redisConfig.host, redisConfig.pass);
+    var params = null;
+    daemon.cmd('getmininginfo', params,
+        function (result) {
+          if (!result || result.error || result[0].error || !result[0].response) {
+            logger.error(logSystem, logComponent, 'Error with RPC call getmininginfo ' + JSON.stringify(result[0].error));
+            return;
+          }
+
+          var finalRedisCommands = [];
+
+          if (result[0].response.blocks !== null) {
+            finalRedisCommands.push(['hset', coin + ':stats', 'networkBlocks', result[0].response.blocks]);
+          }
+          if (result[0].response.difficulty !== null) {
+            finalRedisCommands.push(['hset', coin + ':stats', 'networkDiff', result[0].response.difficulty]);
+          }
+          if (result[0].response.networkhashps !== null) {
+            finalRedisCommands.push(['hset', coin + ':stats', 'networkSols', result[0].response.networkhashps]);
+          }
+
+          daemon.cmd('getnetworkinfo', params,
+              function (result) {
+                if (!result || result.error || result[0].error || !result[0].response) {
+                  logger.error(logSystem, logComponent, 'Error with RPC call getnetworkinfo ' + JSON.stringify(result[0].error));
+                  return;
+                }
+
+                if (result[0].response.connections !== null) {
+                  finalRedisCommands.push(['hset', coin + ':stats', 'networkConnections', result[0].response.connections]);
+                }
+                if (result[0].response.version !== null) {
+                  finalRedisCommands.push(['hset', coin + ':stats', 'networkVersion', result[0].response.version]);
+                }
+                if (result[0].response.subversion !== null) {
+                  finalRedisCommands.push(['hset', coin + ':stats', 'networkSubVersion', result[0].response.subversion]);
+                }
+                if (result[0].response.protocolversion !== null) {
+                  finalRedisCommands.push(['hset', coin + ':stats', 'networkProtocolVersion', result[0].response.protocolversion]);
+                }
+
+                if (finalRedisCommands.length <= 0)
+                  return;
+
+                client.multi(finalRedisCommands).exec(function (error, results) {
+                  if (error) {
+                    logger.error(logSystem, logComponent, 'Error with redis during call to cacheNetworkStats() ' + JSON.stringify(error));
+                    return;
+                  }
+                });
+              }
+          );
+        }
+    );
+  }
+
+  // network stats caching every 58 seconds
+  var stats_interval = 55 * 1000;
+  var statsInterval = setInterval(function() {
+      // update network stats using coin daemon
+      cacheNetworkStats();
+  }, stats_interval);
 
   var magnitude = 100000000;
   var coinPrecision = magnitude.toString().length - 1;
@@ -403,8 +439,6 @@ module.exports = function(logger, portalConfig, poolConfigs) {
           });
         });
 
-        getMiningInfo(logger, poolConfigs, networkPoolState);
-
         client.client.multi(redisCommands).exec(function(err, replies) {
           if (err) {
             logger.error(
@@ -432,12 +466,12 @@ module.exports = function(logger, portalConfig, poolConfigs) {
                   validBlocks: replies[i + 2] ? replies[i + 2].validBlocks || 0 : 0,
                   invalidShares: replies[i + 2] ? replies[i + 2].invalidShares || 0 : 0,
                   totalPaid: replies[i + 2] ? replies[i + 2].totalPaid || 0 : 0,
-                  networkBlocks: networkPoolState.response ? (networkPoolState.response.blocks || 0) : 0,
-                  networkSols: networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0, 
-                  networkSolsString: _this.getReadableHashRateString(networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0), 
-                  networkHashRate: networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0,
-                  networkHashRateString: _this.getReadableHashRateString(networkPoolState.response ? (networkPoolState.response.networkhashps || 0) : 0),
-                  networkDiff: networkPoolState.response ? (networkPoolState.response.difficulty || 0) : 0,
+                  networkBlocks: replies[i + 2] ? replies[i + 2].networkBlocks || 0 : 0,
+                  networkSols: replies[i + 2] ? replies[i + 2].networkSols || 0 : 0, 
+                  networkSolsString: _this.getReadableHashRateString(replies[i + 2] ? replies[i + 2].networkSols || 0 : 0), 
+                  networkHashRate: replies[i + 2] ? replies[i + 2].networkSols || 0 : 0,
+                  networkHashRateString: _this.getReadableHashRateString(replies[i + 2] ? replies[i + 2].networkSols || 0 : 0),
+                  networkDiff: replies[i + 2] ? replies[i + 2].difficulty || 0 : 0,
                   networkConnections: replies[i + 2] ? (replies[i + 2].networkConnections || 0) : 0,
                   networkVersion: replies[i + 2] ? (replies[i + 2].networkSubVersion || 0) : 0,
                   networkProtocolVersion: replies[i + 2] ? (replies[i + 2].networkProtocolVersion || 0) : 0
