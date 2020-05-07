@@ -124,8 +124,8 @@ module.exports = function(logger, portalConfig, poolConfigs) {
     var coin = 'meter';
     var logComponent = 'MiningInfo';
     var poolOptions = poolConfigs[coin];
-    var processingConfig = poolOptions.paymentProcessing;
-    var daemon = new Stratum.daemon.interface([processingConfig.daemon], function(severity, message){
+    var processingConfig = poolOptions.daemons;
+    var daemon = new Stratum.daemon.interface([processingConfig], function(severity, message){
       logger[severity](logSystem, logComponent, message);
     });
     var redisConfig = poolConfigs[coin].redis;
