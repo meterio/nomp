@@ -1,6 +1,6 @@
 var async  = require('async');
 var net    = require('net');
-var bignum = require('bignum');
+const {BigNumber} = require('bignumber.js');
 var algos  = require('meter-stratum-pool/lib/algoProperties.js');
 var util   = require('meter-stratum-pool/lib/util.js');
 
@@ -552,7 +552,7 @@ module.exports = function(logger){
             var response = result[0].response;
 
             // some shitcoins dont provide target, only bits, so we need to deal with both
-            var target = response.target ? bignum(response.target, 16) : util.bignumFromBitsHex(response.bits);
+            var target = response.target ? new BigNumber('0x'+response.target) : util.bignumFromBitsHex(response.bits);
             coinStatus.difficulty = parseFloat((diff1 / target.toNumber()).toFixed(9));
             logger.debug(logSystem, symbol, 'difficulty is ' + coinStatus.difficulty);
 
