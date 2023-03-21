@@ -289,14 +289,18 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           );
           web3.eth.getEnergy(beneficiary, function (bal) {
             let pendingReward = new BigNumber(bal);
-            if (beneficiary in pendingShares) {
+            console.log("balance: ", bal);
+            if (beneficiary in workers) {
               const selfBalance = new BigNumber(
-                pendingShares[beneficiary].balance || 0
+                workers[beneficiary].balance || 0
               );
               const selfReward = new BigNumber(
-                pendingShares[beneficiary].reward || 0
+                workers[beneficiary].reward || 0
               );
               const txFee = new BigNumber(5e16);
+              console.log("self balance: ", selfBalance.toFixed(0));
+              console.log("self reward: ", selfReward.toFixed(0));
+              console.log("tx fee: ", txFee.toFixed(0));
               pendingReward = pendingReward
                 .minus(selfBalance)
                 .minus(selfReward)
