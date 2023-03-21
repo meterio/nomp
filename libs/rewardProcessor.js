@@ -287,7 +287,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             logComponent,
             "Loading MTR balance and calculate the actual reward amount for each worker"
           );
-          web3.eth.getEnergy(beneficiary, function (bal) {
+          web3.eth.getEnergy(beneficiary, function (err, bal) {
             let pendingReward = new BigNumber(bal);
             console.log("balance: ", bal);
             if (beneficiary in workers) {
@@ -371,9 +371,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             }
 
             logger.debug(logSystem, logComponent, "Prepare to send reward tx");
-            web3.eth.getBlockNum(function (blockNum) {
-              console.log("best num:", bestNum);
-              web3.eth.getBlock(bestNum, function (best) {
+            web3.eth.getBlockNum(function (err, blockNum) {
+              console.log("best num:", blockNum);
+              web3.eth.getBlock(blockNum, function (err, best) {
                 console.log(best);
                 const blockRef = best.id.substr(0, 18);
                 let chainTag = processingConfig.chainTag; // chainTag for testnet
@@ -407,7 +407,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 const raw = tx.encode();
                 const rawTx = "0x" + raw.toString("hex");
                 logger.debug(logSystem, logComponent, "Sending out reward tx");
-                web3.eth.sendSignedTransaction(rawTx, function () {
+                web3.eth.sendSignedTransaction(rawTx, function (err) {
                   callback(null, workers, rounds);
                 });
               });
