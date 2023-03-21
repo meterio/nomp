@@ -58,12 +58,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
   var coin = poolOptions.coin.name;
   var processingConfig = poolOptions.rewardProcessing;
 
-  var daemon = new Stratum.daemon.interface(poolOptions.daemons, function (
-    severity,
-    message
-  ) {
-    logger[severity](logSystem, logComponent, message);
-  });
+  const content = fs.readFileSync(processingConfig.keystoreFile);
+  const passphrase = processingConfig.passphrase;
+  const j = JSON.parse(content);
 
   var logSystem = "Rewards";
   var logComponent = coin;
@@ -76,8 +73,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
   );
   logger.debug(logSystem, logComponent, "beneficiary: " + beneficiary);
   var web3 = meterify(new Web3(), processingConfig.restfulURL);
-  var pk = "";
-  web3.eth.accounts.wallet.add(pk);
+  var poolPK = "0x";
 
   var redisClient = redis.createClient(
     poolOptions.redis.port,
@@ -90,7 +86,13 @@ function SetupForPool(logger, poolOptions, setupFinished) {
   async.parallel(
     [
       function (callback) {
-        console.log("1111111111111");
+        cry.Keystore.decrypt(j, passphrase).then(function (encrypted) {
+          poolPK = "0x" + encrypted.toString("hex");
+          web3.eth.accounts.wallet.add(poolPK);
+          callback(null);
+        });
+      },
+      function (callback) {
         web3.eth.getEnergy(beneficiary, function (err, balance) {
           logger.debug(logSystem, logComponent, "balance: " + err + balance);
           callback(null);
@@ -283,9 +285,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           logger.debug(
             logSystem,
             logComponent,
-            "Loading balance and calculate the actual reward amount for each worker"
+            "Loading MTR balance and calculate the actual reward amount for each worker"
           );
-          web3.eth.getBalance(beneficiary, function (bal) {
+          web3.eth.getEnergy(beneficiary, function (bal) {
             let pendingReward = new BigNumber(bal);
             if (beneficiary in pendingShares) {
               const selfBalance = new BigNumber(
@@ -308,6 +310,12 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 rounds
               );
             }
+
+            logger.debug(
+              logSystem,
+              logComponent,
+              "Pool has pending reward of " + pendingReward.toFixed(0)
+            );
 
             for (let w in workers) {
               if (w in pendingShares) {
@@ -358,6 +366,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               return;
             }
 
+            logger.debug(logSystem, logComponent, "Prepare to send reward tx");
             web3.eth.getBlockNum(function (blockNum) {
               console.log("best num:", bestNum);
               web3.eth.getBlock(bestNum, function (best) {
@@ -388,10 +397,12 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 let tx = new Transaction(txObj);
                 const pkBuffer = Buffer.from(pk.replace("0x", ""), "hex");
                 const signingHash = cry.blake2b256(tx.encode());
+                logger.debug(logSystem, logComponent, "Signed reward tx");
                 tx.signature = cry.secp256k1.sign(signingHash, pkBuffer);
 
                 const raw = tx.encode();
                 const rawTx = "0x" + raw.toString("hex");
+                logger.debug(logSystem, logComponent, "Sending out reward tx");
                 web3.eth.sendSignedTransaction(rawTx, function () {
                   callback(null, workers, rounds);
                 });

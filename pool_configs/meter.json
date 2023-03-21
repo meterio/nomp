@@ -17,6 +17,8 @@
     "enabled": true,
     "rewardInterval": 20,
     "minimumPayment": 70,
+    "keystoreFile": "/Users/simon/keys/test-keystores/exposed.keystore",
+    "passphrase": "",
     "restfulURL": "http://mainnet.meter.io",
     "chainTag": 82
   },
