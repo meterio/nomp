@@ -2,7 +2,6 @@ var fs = require("fs");
 var { Transaction, cry } = require("@meterio/devkit");
 var redis = require("redis");
 var async = require("async");
-var Stratum = require("meter-stratum-pool");
 var util = require("meter-stratum-pool/lib/util.js");
 var meterify = require("meterify").meterify;
 var Web3 = require("web3");
@@ -270,7 +269,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 "Total Shares: " +
                   totalShares +
                   ", PendingShares: " +
-                  pendingShares.length
+                  Object.keys(pendingShares).length
               );
 
               callback(null, workers, rounds, totalShares, pendingShares);
