@@ -7,6 +7,8 @@ var meterify = require("meterify").meterify;
 var Web3 = require("web3");
 const { default: BigNumber } = require("bignumber.js");
 
+const ADDR_PATTERN = RegExp("^0x[0-9a-fA-F]{40}$");
+
 module.exports = function (logger) {
   var poolConfigs = JSON.parse(process.env.pools);
 
@@ -63,7 +65,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
   var logSystem = "Rewards";
   var logComponent = coin;
-  var beneficiary = "0x" + poolOptions.rewardBeneficiary;
+  var beneficiary = "0x" + poolOptions.rewardBeneficiary.toLowerCase();
 
   logger.debug(
     logSystem,
@@ -153,7 +155,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           logger.debug(
             logSystem,
             logComponent,
-            "Call redis to get an array of rounds"
+            "Call redis to balances and rounds"
           );
           redisClient
             .multi([
@@ -174,6 +176,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               }
 
               // calculate worker balances
+              console.log("workers: ", results[0]);
               var workers = {};
               for (var w in results[0]) {
                 workers[w] = {
@@ -182,6 +185,14 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               }
 
               // list out all the rounds
+              if (results[1].length <= 0) {
+                logger.debug(
+                  logSystem,
+                  logComponent,
+                  "No pending blocks to process, skip"
+                );
+                return callback(new Error("no pending blocks to calculate"));
+              }
               var rounds = results[1].map(function (r) {
                 var details = r.split(":");
                 return {
@@ -247,28 +258,45 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
                     var totalSharesInRound = Object.keys(workerShares).reduce(
                       function (p, c) {
-                        return p + parseFloat(workerShares[c]);
+                        if (c != "time") {
+                          return p + parseFloat(workerShares[c]);
+                        }
+                        return p;
                       },
                       0
                     );
+
                     totalShares += totalSharesInRound;
+                    logger.debug(
+                      logSystem,
+                      logComponent,
+                      "Total shares in round " +
+                        round.height +
+                        ": " +
+                        totalSharesInRound
+                    );
 
                     for (var workerAddress in workerShares) {
                       if (!(workerAddress in pendingShares)) {
                         pendingShares[workerAddress] = 0;
                       }
-                      pendingShares[workerAddress] +=
-                        workerShares[workerAddress];
+                      if (workerAddress == "time") {
+                        continue;
+                      }
+                      pendingShares[workerAddress] += Number(
+                        workerShares[workerAddress]
+                      );
                     }
                     break;
                 }
               });
+
               logger.debug(
                 logSystem,
                 logComponent,
                 "Total Shares: " +
                   totalShares +
-                  ", PendingShares: " +
+                  ", len(PendingShares): " +
                   Object.keys(pendingShares).length
               );
 
@@ -284,11 +312,19 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           logger.debug(
             logSystem,
             logComponent,
-            "Loading MTR balance and calculate the actual reward amount for each worker"
+            "Loading MTR balance and calculate the actual reward for each worker"
           );
           web3.eth.getEnergy(beneficiary, function (err, bal) {
-            let pendingReward = new BigNumber(bal);
-            console.log("balance: ", bal);
+            let poolBalance = new BigNumber(bal);
+            let actualTotalReward = new BigNumber(bal);
+            if (err) {
+              console.log("getEnergy error: ", err);
+              return callback(err);
+            }
+            if (Number.isNaN(Number(bal))) {
+              return callback(new Error("could not load balance"));
+            }
+            const txFee = new BigNumber(5e16);
             if (beneficiary in workers) {
               const selfBalance = new BigNumber(
                 workers[beneficiary].balance || 0
@@ -296,54 +332,102 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               const selfReward = new BigNumber(
                 workers[beneficiary].reward || 0
               );
-              const txFee = new BigNumber(5e16);
-              console.log("self balance: ", selfBalance.toFixed(0));
-              console.log("self reward: ", selfReward.toFixed(0));
-              console.log("tx fee: ", txFee.toFixed(0));
-              pendingReward = pendingReward
+              actualTotalReward = poolBalance
                 .minus(selfBalance)
-                .minus(selfReward)
-                .minus(txFee);
-            }
-            if (pendingReward.isLessThanOrEqualTo(0)) {
-              logger.debug(logSystem, logComponent, "Not enough reward");
-              callback(
-                "not enough reward: " + pendingReward.toFixed(0),
-                workers,
-                rounds
+                .minus(selfReward);
+              actualTotalReward = actualTotalReward.minus(txFee);
+              logger.debug(
+                logSystem,
+                logComponent,
+                "Pool Balance: " +
+                  poolBalance.toFixed(0) +
+                  ", Pool Reserve: " +
+                  selfBalance.plus(selfReward).toFixed(0) +
+                  ", TxFee: " +
+                  txFee.toFixed(0) +
+                  ", Actual TotalReward: " +
+                  actualTotalReward.toFixed(0)
+              );
+            } else {
+              actualTotalReward = actualTotalReward.minus(txFee);
+              logger.debug(
+                logSystem,
+                logComponent,
+                "Pool Balance: " +
+                  poolBalance.toFixed(0) +
+                  ", TxFee: " +
+                  txFee.toFixed(0) +
+                  ", Actual TotalReward: " +
+                  actualTotalReward.toFixed(0)
               );
             }
 
-            logger.debug(
-              logSystem,
-              logComponent,
-              "Pool has pending reward of " + pendingReward.toFixed(0)
-            );
+            if (actualTotalReward.isLessThanOrEqualTo(0)) {
+              logger.debug(logSystem, logComponent, "Not reward this interval");
+              return callback(new Error("not reward this interval"));
+            }
 
-            for (let w in workers) {
-              if (w in pendingShares) {
-                if (!workers[w].reward) {
-                  workers[w].reward = new BigNumber(0);
-                } else {
+            let leftover = new BigNumber(actualTotalReward);
+
+            for (let w in pendingShares) {
+              const share = new BigNumber(pendingShares[w]).toNumber();
+              w = w.toLowerCase();
+              if (!(w in workers)) {
+                workers[w] = {
+                  reward: new BigNumber(0),
+                  balance: new BigNumber(0),
+                };
+              } else {
+                if (workers[w].reward) {
                   workers[w].reward = new BigNumber(workers[w].reward);
-                }
-                if (!workers[w].balance) {
-                  workers[w].balance = new BigNumber(0);
                 } else {
+                  workers[w].reward = new BigNumber(0);
+                }
+                if (workers[w].balance) {
                   workers[w].balance = new BigNumber(workers[w].balance);
-                }
-
-                const workerReward = pendingReward
-                  .times(share)
-                  .div(totalShares);
-                if (w.match(ADDR_PATTERN)) {
-                  workers[w].reward = workerReward.add(workers[w].reward);
-                  workers[w].issue = true;
                 } else {
-                  workers[w].balance = workerReward.add(workers[w].balance);
-                  workers[w].issue = false;
+                  workers[w].balance = new BigNumber(0);
                 }
               }
+
+              const workerReward = actualTotalReward
+                .times(share)
+                .div(totalShares)
+                .times(100 - processingConfig.poolTax)
+                .div(100);
+              console.log(
+                `worker ${w}, reward delta: ${share}/${totalShares} * ${actualTotalReward.toFixed(
+                  0
+                )} * ${
+                  100 - processingConfig.poolTax
+                }% = ${workerReward.toFixed(0)}`
+              );
+
+              if (w.match(ADDR_PATTERN) && w != beneficiary) {
+                workers[w].reward = workerReward.plus(workers[w].reward);
+                workers[w].issue = true;
+                leftover = leftover.minus(workerReward);
+              } else {
+                workers[w].balance = workerReward.plus(workers[w].balance);
+                workers[w].issue = false;
+              }
+              console.log(
+                `calced worker ${w}, balance: ${workers[w].balance}, reward: ${workers[w].reward}`
+              );
+            }
+
+            // add reserve to beneficiary
+            if (!(beneficiary in workers)) {
+              workers[beneficiary] = {
+                balance: new BigNumber(0),
+                issue: false,
+              };
+            }
+            if (leftover.isGreaterThan(0)) {
+              console.log(`add leftover: `, leftover.toFixed(0));
+              workers[beneficiary].balance = new BigNumber(
+                leftover.plus(workers[beneficiary]).balance.toFixed(0)
+              );
             }
 
             callback(null, workers, rounds);
@@ -359,8 +443,8 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               worker.reward = worker.reward || 0;
               if (worker.issue) {
                 addressAmounts[w] = new BigNumber(0)
-                  .add(worker.balance)
-                  .add(worker.reward);
+                  .plus(worker.balance)
+                  .plus(worker.reward);
               }
             }
 
@@ -370,10 +454,16 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             }
 
             logger.debug(logSystem, logComponent, "Prepare to send reward tx");
-            web3.eth.getBlockNum(function (err, blockNum) {
-              console.log("best num:", blockNum);
+            web3.eth.getBlockNumber(function (err, blockNum) {
+              if (err) {
+                console.log("getBlockNumber erro: ", err);
+                return callback(err);
+              }
               web3.eth.getBlock(blockNum, function (err, best) {
-                console.log(best);
+                if (err) {
+                  console.log("getBlock erro: ", err);
+                  return callback(err);
+                }
                 const blockRef = best.id.substr(0, 18);
                 let chainTag = processingConfig.chainTag; // chainTag for testnet
 
@@ -381,24 +471,27 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 let clauses = [];
                 for (const addr in addressAmounts) {
                   const amount = addressAmounts[addr];
-                  console.log(`pay to ${addr} with ${amount}`);
-                  clauses.push({ to: addr, value: amount.toFixed(0) });
+                  console.log(`pay to ${addr} with ${amount.toFixed(0)}`);
+                  clauses.push({
+                    to: addr,
+                    value: amount.toFixed(0),
+                    token: 0,
+                    data: "0x",
+                  });
                 }
                 const baseGas = 5000 + clauses.length * 16000; // fixed value
-                console.log("base gas: ", baseGas);
-                console.log("data gas: ", dataGas);
                 let txObj = {
                   chainTag,
                   blockRef, // the first 8 bytes of latest block
-                  expiration: 48, // blockRefHeight + expiration is the height for tx expire
+                  expiration: 64, // blockRefHeight + expiration is the height for tx expire
                   clauses,
                   gasPriceCoef: 0,
                   gas: baseGas + dataGas,
                   dependsOn: null,
-                  nonce: getRandomInt(Number.MAX_SAFE_INTEGER), // random number
+                  nonce: 0, // random number
                 };
                 let tx = new Transaction(txObj);
-                const pkBuffer = Buffer.from(pk.replace("0x", ""), "hex");
+                const pkBuffer = Buffer.from(poolPK.replace("0x", ""), "hex");
                 const signingHash = cry.blake2b256(tx.encode());
                 logger.debug(logSystem, logComponent, "Signed reward tx");
                 tx.signature = cry.secp256k1.sign(signingHash, pkBuffer);
@@ -407,64 +500,19 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 const rawTx = "0x" + raw.toString("hex");
                 logger.debug(logSystem, logComponent, "Sending out reward tx");
                 web3.eth.sendSignedTransaction(rawTx, function (err) {
+                  if (err) {
+                    console.log("sendSignedTransaction error:", err);
+                    return callback(err);
+                  }
                   callback(null, workers, rounds);
                 });
               });
             });
-            // daemon.cmd(
-            //   "sendmany",
-            //   [addressAccount || "", addressAmounts],
-            //   function (result) {
-            //     //Check if rewards failed because wallet doesn't have enough coins to pay for tx fees
-            //     if (result.error && result.error.code === -6) {
-            //       var higherPercent = withholdPercent + 0.01;
-            //       logger.warning(
-            //         logSystem,
-            //         logComponent,
-            //         "Not enough funds to cover the tx fees for sending out rewards, decreasing rewards by " +
-            //           higherPercent * 100 +
-            //           "% and retrying"
-            //       );
-            //       trySend(higherPercent);
-            //     } else if (result.error) {
-            //       logger.error(
-            //         logSystem,
-            //         logComponent,
-            //         "Error trying to send rewards with RPC sendmany " +
-            //           JSON.stringify(result.error)
-            //       );
-            //       callback(true);
-            //     } else {
-            //       logger.debug(
-            //         logSystem,
-            //         logComponent,
-            //         "Sent out a total of " +
-            //           totalSent / magnitude +
-            //           " to " +
-            //           Object.keys(addressAmounts).length +
-            //           " workers"
-            //       );
-            //       if (withholdPercent > 0) {
-            //         logger.warning(
-            //           logSystem,
-            //           logComponent,
-            //           "Had to withhold " +
-            //             withholdPercent * 100 +
-            //             "% of reward from miners to cover transaction fees. " +
-            //             "Fund pool wallet with coins to prevent this from happening"
-            //         );
-            //       }
-            //       callback(null, workers, rounds);
-            //     }
-            //   },
-            //   true,
-            //   true
-            // );
           };
           trySend(0);
         },
         function (workers, rounds, callback) {
-          var totalPaid = 0;
+          var totalPaid = new BigNumber(0);
 
           var balanceUpdateCommands = [];
           var workerPayoutsCommand = [];
@@ -472,6 +520,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           for (var w in workers) {
             var worker = workers[w];
             if (worker.issue) {
+              console.log(`set ${w} balance to 0`);
               balanceUpdateCommands.push(["hset", coin + ":balances", w, 0]);
               workerPayoutsCommand.push([
                 "hincrbyfloat",
@@ -484,11 +533,12 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               ]);
               totalPaid = totalPaid.plus(worker.balance).plus(worker.balance);
             } else {
+              console.log(`set ${w} balance to ${worker.balance}`);
               balanceUpdateCommands.push([
                 "hset",
                 coin + ":balances",
                 w,
-                worker.balance.toNumber(),
+                worker.balance.toFixed(0),
               ]);
             }
           }
@@ -549,7 +599,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               "hincrbyfloat",
               coin + ":stats",
               "totalPaid",
-              totalPaid,
+              totalPaid.toFixed(0),
             ]);
           }
 
