@@ -377,6 +377,19 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             }
 
             let leftover = new BigNumber(actualTotalReward);
+            // turn workers into BigNumbers
+            for (w in workers) {
+              if (workers[w].reward) {
+                workers[w].reward = new BigNumber(workers[w].reward);
+              } else {
+                workers[w].reward = new BigNumber(0);
+              }
+              if (workers[w].balance) {
+                workers[w].balance = new BigNumber(workers[w].balance);
+              } else {
+                workers[w].balance = new BigNumber(0);
+              }
+            }
 
             // add beneficiary
             if (!(beneficiary in workers)) {
@@ -385,6 +398,8 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 reward: new BigNumber(0),
                 issue: false,
               };
+            } else {
+              workers[beneficiary].issue = false;
             }
 
             // add poolTaxReciever
@@ -409,19 +424,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                   reward: new BigNumber(0),
                   balance: new BigNumber(0),
                 };
-              } else {
-                if (workers[w].reward) {
-                  workers[w].reward = new BigNumber(workers[w].reward);
-                } else {
-                  workers[w].reward = new BigNumber(0);
-                }
-                if (workers[w].balance) {
-                  workers[w].balance = new BigNumber(workers[w].balance);
-                } else {
-                  workers[w].balance = new BigNumber(0);
-                }
               }
-
               const workerReward = actualTotalReward
                 .times(share)
                 .div(totalShares)
@@ -487,7 +490,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             if (leftover.isGreaterThan(0)) {
               console.log(`add leftover to reserve: `, leftover.toFixed(0));
               workers[beneficiary].balance = new BigNumber(
-                leftover.plus(workers[beneficiary]).balance.toFixed(0)
+                leftover.plus(workers[beneficiary].balance.toFixed(0))
               );
               logger.debug(
                 logSystem,
