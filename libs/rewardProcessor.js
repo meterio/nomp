@@ -403,6 +403,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               if (w == "time") {
                 continue;
               }
+              console.log("VISITED: WORKER ", w);
               if (!(w in workers)) {
                 workers[w] = {
                   reward: new BigNumber(0),
@@ -441,12 +442,15 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 }% = ${workerReward.toFixed(0)}`
               );
 
+              console.log("beofre tax.plus");
               workers[poolTaxReceiver].reward = tax.plus(
                 workers[poolTaxReceiver].reward
               );
               if (w.match(ADDR_PATTERN)) {
+                console.log("before workerReward.plus");
                 workers[w].reward = workerReward.plus(workers[w].reward);
               } else {
+                console.log("before workerReward.plus");
                 workers[w].balance = workerReward.plus(workers[w].balance);
                 workers[w].issue = false;
               }
@@ -457,7 +461,10 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
             // filter out actual payees with amount over minimum threshold
             // if amount < minimum threshold, add them to balance and payout next round
+            console.log("loop through workers");
             for (w in workers) {
+              console.log("visit: ", w);
+              console.log(workers[w]);
               if (workers[w].issue !== false) {
                 const amount = workers[w].reward.plus(workers[w].balance);
                 if (amount.isGreaterThan(minimumPayment)) {
@@ -475,6 +482,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               }
             }
 
+            console.log("add leftovers");
             // ideally there should be no leftovers, but if it does, add it to reserve
             if (leftover.isGreaterThan(0)) {
               console.log(`add leftover to reserve: `, leftover.toFixed(0));
