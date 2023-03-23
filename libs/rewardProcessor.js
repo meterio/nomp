@@ -81,9 +81,12 @@ function SetupForPool(logger, poolOptions, setupFinished) {
     poolOptions.redis.host
   );
 
+  var poolTax = Number(processingConfig.poolTax);
+  var poolTaxReceiver = processingConfig.poolTaxReceiver.toLowerCase();
+  var minimumPayment = new BigNumber(processingConfig.minimumPayment);
+
   var rewardInterval;
 
-  console.log("SETUP ");
   async.parallel(
     [
       function (callback) {
@@ -104,6 +107,22 @@ function SetupForPool(logger, poolOptions, setupFinished) {
       console.log("cb: err: ", err);
       if (err) {
         console.log("setup finished", false);
+        setupFinished(false);
+        return;
+      }
+      if (poolTax < 0 || poolTax > 100) {
+        console.log("poolTax out of range[0,100]");
+        setupFinished(false);
+        return;
+      }
+
+      if (!poolTaxReceiver.match(ADDR_PATTERN)) {
+        console.log("poolTaxReceiver is invalid address");
+        setupFinished(false);
+        return;
+      }
+      if (Number.isNaN(minimumPayment.toNumber())) {
+        console.log("minimumPayment is invalid");
         setupFinished(false);
         return;
       }
@@ -324,7 +343,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             if (Number.isNaN(Number(bal))) {
               return callback(new Error("could not load balance"));
             }
-            const txFee = new BigNumber(5e16);
+            const txFee = new BigNumber(
+              pendingShares.length * 16000 + 5000
+            ).times(500e9);
             if (beneficiary in workers) {
               const selfBalance = new BigNumber(
                 workers[beneficiary].balance || 0
@@ -363,12 +384,31 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             }
 
             if (actualTotalReward.isLessThanOrEqualTo(0)) {
-              logger.debug(logSystem, logComponent, "Not reward this interval");
-              return callback(new Error("not reward this interval"));
+              logger.debug(logSystem, logComponent, "No reward this interval");
+              return callback(new Error("no reward this interval"));
             }
 
             let leftover = new BigNumber(actualTotalReward);
 
+            // add beneficiary
+            if (!(beneficiary in workers)) {
+              workers[beneficiary] = {
+                balance: new BigNumber(0),
+                reward: new BigNumber(0),
+                issue: false,
+              };
+            }
+
+            // add poolTaxReciever
+            if (!(poolTaxReceiver in workers)) {
+              workers[poolTaxReceiver] = {
+                balance: new BigNumber(0),
+                reward: new BigNumber(0),
+              };
+            }
+
+            // calculate rewards for each miner
+            // and accumulated pool tax to poolTaxReceiver
             for (let w in pendingShares) {
               const share = new BigNumber(pendingShares[w]).toNumber();
               w = w.toLowerCase();
@@ -393,7 +433,12 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               const workerReward = actualTotalReward
                 .times(share)
                 .div(totalShares)
-                .times(100 - processingConfig.poolTax)
+                .times(100 - poolTax)
+                .div(100);
+              const tax = actualTotalReward
+                .times(share)
+                .div(totalShares)
+                .times(poolTax)
                 .div(100);
               console.log(
                 `worker ${w}, reward delta: ${share}/${totalShares} * ${actualTotalReward.toFixed(
@@ -403,10 +448,11 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 }% = ${workerReward.toFixed(0)}`
               );
 
-              if (w.match(ADDR_PATTERN) && w != beneficiary) {
+              workers[poolTaxReceiver].reward = tax.plus(
+                workers[poolTaxReceiver].reward
+              );
+              if (w.match(ADDR_PATTERN)) {
                 workers[w].reward = workerReward.plus(workers[w].reward);
-                workers[w].issue = true;
-                leftover = leftover.minus(workerReward);
               } else {
                 workers[w].balance = workerReward.plus(workers[w].balance);
                 workers[w].issue = false;
@@ -416,15 +462,29 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               );
             }
 
-            // add reserve to beneficiary
-            if (!(beneficiary in workers)) {
-              workers[beneficiary] = {
-                balance: new BigNumber(0),
-                issue: false,
-              };
+            // filter out actual payees with amount over minimum threshold
+            // if amount < minimum threshold, add them to balance and payout next round
+            for (w in workers) {
+              if (workers[w].issue !== false) {
+                const amount = workers[w].reward.plus(workers[w].balance);
+                if (amount.isGreaterThan(minimumPayment)) {
+                  workers[w].issue = true;
+                  leftover = leftover
+                    .minus(workers[w].reward)
+                    .minus(workers[w].balance);
+                } else {
+                  workers[w].balance = workers[w].balance.plus(
+                    workers[w].reward
+                  );
+                  workers[w].reward = new BigNumber(0);
+                  workers[w].issue = false;
+                }
+              }
             }
+
+            // ideally there should be no leftovers, but if it does, add it to reserve
             if (leftover.isGreaterThan(0)) {
-              console.log(`add leftover: `, leftover.toFixed(0));
+              console.log(`add leftover to reserve: `, leftover.toFixed(0));
               workers[beneficiary].balance = new BigNumber(
                 leftover.plus(workers[beneficiary]).balance.toFixed(0)
               );
