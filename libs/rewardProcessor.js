@@ -348,7 +348,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
             // Calculate actual total reward
             const txFee = new BigNumber(
-              pendingShares.length * 16000 + 5000
+              Object.keys(pendingShares).length * 16000 + 5000
             ).times(500e9);
             let poolReserve = new BigNumber(0);
             if (beneficiary in workers) {
