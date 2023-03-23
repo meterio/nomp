@@ -16,11 +16,13 @@
   "rewardProcessing": {
     "enabled": true,
     "rewardInterval": 20,
-    "minimumPayment": 70,
-    "keystoreFile": "/Users/simon/keys/test-keystores/exposed.keystore",
+    "poolTax": 3,
+    "poolTaxReceiver": "0x14b27D8DC12E59a9904DaC6d17D33B8de2E80e66",
+    "minimumPayment": 1e17,
+    "keystoreFile": "/home/ubuntu/exposed.keystore",
     "passphrase": "",
-    "restfulURL": "http://mainnet.meter.io",
-    "chainTag": 82
+    "restfulURL": "http://testnet.meter.io",
+    "chainTag": 101
   },
   "paymentProcessing": {
     "enabled": false,
