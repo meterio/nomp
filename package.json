@@ -43,7 +43,7 @@
     "ethers": "^5.4.4",
     "express": "*",
     "extend": "*",
-    "meter-stratum-pool": "^0.2.10",
+    "meter-stratum-pool": "^0.2.12",
     "meterify": "^1.4.7",
     "mysql": "*",
     "node-json-minify": "*",

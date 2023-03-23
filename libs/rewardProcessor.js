@@ -104,9 +104,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
       },
     ],
     function (err) {
-      console.log("cb: err: ", err);
       if (err) {
-        console.log("setup finished", false);
         setupFinished(false);
         return;
       }
@@ -134,7 +132,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
         }
       }, processingConfig.rewardInterval * 1000);
       setTimeout(processRewards, 100);
-      console.log("setup finished", true);
       setupFinished(true);
     }
   );
@@ -194,7 +191,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               }
 
               // calculate worker balances
-              console.log("workers: ", results[0]);
+              // console.log("balances: ", results[0]);
               var workers = {};
               for (var w in results[0]) {
                 workers[w] = {
@@ -238,11 +235,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
           let pendingShares = {}; // worker name -> shares sum for this worker
           let totalShares = 0; // total share of pending rounds
 
-          logger.debug(
-            logSystem,
-            logComponent,
-            "Start calculate totalShares & pendingShares"
-          );
           startRedisTimer();
           redisClient
             .multi(shareLookups)
@@ -263,10 +255,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                   logger.error(
                     logSystem,
                     logComponent,
-                    "No worker shares for round: " +
-                      round.height +
-                      " blockHash: " +
-                      round.blockHash
+                    `No worker shares for round: ${round.height}, blockHash: ${round.blockHash}`
                   );
                   return;
                 }
@@ -287,11 +276,11 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                     );
 
                     totalShares += totalSharesInRound;
-                    logger.debug(
-                      logSystem,
-                      logComponent,
-                      `Total shares in round ${round.height}: ${totalSharesInRound}`
-                    );
+                    // logger.debug(
+                    //   logSystem,
+                    //   logComponent,
+                    //   `Total shares in round ${round.height}: ${totalSharesInRound}`
+                    // );
 
                     for (var workerAddress in workerShares) {
                       if (!(workerAddress in pendingShares)) {
@@ -308,6 +297,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 }
               });
 
+              if ("time" in pendingShares) {
+                delete pendingShares["time"];
+              }
               logger.debug(
                 logSystem,
                 logComponent,
@@ -315,9 +307,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                   Object.keys(pendingShares).length
                 }`
               );
-              if ("time" in pendingShares) {
-                delete pendingShares["time"];
-              }
 
               callback(null, workers, rounds, totalShares, pendingShares);
             });
@@ -328,11 +317,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
          *  according to their shares
          */
         function (workers, rounds, totalShares, pendingShares, callback) {
-          logger.debug(
-            logSystem,
-            logComponent,
-            `Read balance/reserve and calculate the actual reward for each worker`
-          );
           startRPCTimer();
           web3.eth.getEnergy(beneficiary, function (err, bal) {
             endRPCTimer();
@@ -372,7 +356,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
             // if actual total reward is not enough for distribute, skip
             if (actualTotalReward.isLessThanOrEqualTo(0)) {
-              logger.debug(logSystem, logComponent, "No reward this interval");
               return callback(new Error("no reward this interval"));
             }
 
@@ -410,6 +393,20 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               };
             }
 
+            console.log(`Beneficiary: ${beneficiary}`);
+            console.log(`PoolTaxReceiver: ${poolTaxReceiver}`);
+            console.log(`Balances: `);
+            for (w in workers) {
+              console.log(`  ${w}: ${workers[w].balance.toFixed(0)}`);
+            }
+            console.log(`Shares:`);
+            for (w in pendingShares) {
+              console.log(
+                `  ${w}: ${new BigNumber(pendingShares[w]).toFixed(0)}`
+              );
+            }
+            console.log(`Total Shares: `, totalShares);
+
             // calculate rewards for each miner
             // and accumulated pool tax to poolTaxReceiver
             for (let w in pendingShares) {
@@ -418,7 +415,6 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               if (w == "time") {
                 continue;
               }
-              console.log("VISITED: WORKER ", w);
               if (!(w in workers)) {
                 workers[w] = {
                   reward: new BigNumber(0),
@@ -438,36 +434,28 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               logger.debug(
                 logSystem,
                 logComponent,
-                `worker ${w} reward: ${share}/${totalShares} * ${actualTotalReward.toFixed(
+                `reward for ${w}: ${share}/${totalShares} * ${actualTotalReward.toFixed(
                   0
                 )} * ${
                   100 - processingConfig.poolTax
-                }% = ${workerReward.toFixed(0)}`
+                }% = ${workerReward.toFixed(0)}, tax: ${tax.toFixed(0)}`
               );
 
-              console.log("beofre tax.plus");
               workers[poolTaxReceiver].reward = tax.plus(
                 workers[poolTaxReceiver].reward
               );
               if (w.match(ADDR_PATTERN)) {
-                console.log("before workerReward.plus");
                 workers[w].reward = workerReward.plus(workers[w].reward);
               } else {
-                console.log("before workerReward.plus");
                 workers[w].balance = workerReward.plus(workers[w].balance);
                 workers[w].issue = false;
               }
-              console.log(
-                `calced worker ${w}, balance: ${workers[w].balance}, reward: ${workers[w].reward}`
-              );
             }
 
             // filter out actual payees with amount over minimum threshold
             // if amount < minimum threshold, add them to balance and payout next round
-            console.log("loop through workers");
+            logger.debug("Issue Plan");
             for (w in workers) {
-              console.log("visit: ", w);
-              console.log(workers[w]);
               if (workers[w].issue !== false) {
                 const amount = workers[w].reward.plus(workers[w].balance);
                 if (amount.isGreaterThan(minimumPayment)) {
@@ -483,19 +471,33 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                   workers[w].issue = false;
                 }
               }
+              if (workers[w].issue === false) {
+                logger.debug(
+                  logSystem,
+                  logComponent,
+                  `Reserve for ${w}: ${workers[w].balance.toFixed(0)}`
+                );
+              } else if (workers[w].issue === true) {
+                amount = workers[w].balance.plus(workers[w].reward);
+                logger.debug(
+                  logSystem,
+                  logComponent,
+                  `Issue to ${w}: ${amount.toFixed(0)}`
+                );
+              }
             }
 
-            console.log("add leftovers");
             // ideally there should be no leftovers, but if it does, add it to reserve
             if (leftover.isGreaterThan(0)) {
-              console.log(`add leftover to reserve: `, leftover.toFixed(0));
               workers[beneficiary].balance = new BigNumber(
                 leftover.plus(workers[beneficiary].balance.toFixed(0))
               );
               logger.debug(
                 logSystem,
                 logComponent,
-                `Add reserve ${leftover.toFixed(0)}, totalReserve: ${workers[
+                `Add leftover ${leftover.toFixed(
+                  0
+                )} to reserve, afterwards totalReserve: ${workers[
                   beneficiary
                 ].balance.toFixed(0)}`
               );
@@ -529,14 +531,14 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             web3.eth.getBlockNumber(function (err, blockNum) {
               endRPCTimer();
               if (err) {
-                console.log("getBlockNumber erro: ", err);
+                console.log("getBlockNumber error: ", err);
                 return callback(err);
               }
               startRPCTimer();
               web3.eth.getBlock(blockNum, function (err, best) {
                 endRPCTimer();
                 if (err) {
-                  console.log("getBlock erro: ", err);
+                  console.log("getBlock error: ", err);
                   return callback(err);
                 }
                 const blockRef = best.id.substr(0, 18);
@@ -546,7 +548,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 let clauses = [];
                 for (const addr in addressAmounts) {
                   const amount = addressAmounts[addr];
-                  console.log(`pay to ${addr} with ${amount.toFixed(0)}`);
+                  console.log(
+                    `pay to ${addr} with ${amount.div(1e18).toFixed()} MTR`
+                  );
                   clauses.push({
                     to: addr,
                     value: amount.toFixed(0),
