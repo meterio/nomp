@@ -167,14 +167,13 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
     async.waterfall(
       [
-        /* Call redis to get an array of rounds - which are coinbase transactions and block heights from submitted
-               blocks. */
+        /* Call redis to get an array of pending rounds - which are coinbase transactions and block heights from submitted blocks. */
         function (callback) {
           startRedisTimer();
           logger.debug(
             logSystem,
             logComponent,
-            "Call redis to balances and rounds"
+            "Call redis to get balances and rounds"
           );
           redisClient
             .multi([
@@ -203,7 +202,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 };
               }
 
-              // list out all the rounds
+              // if no pending rounds, stop right here
               if (results[1].length <= 0) {
                 logger.debug(
                   logSystem,
@@ -212,6 +211,8 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 );
                 return callback(new Error("no pending blocks to calculate"));
               }
+
+              // list out all the rounds
               var rounds = results[1].map(function (r) {
                 var details = r.split(":");
                 return {
@@ -234,13 +235,13 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             return ["hgetall", coin + ":shares:round" + r.height];
           });
 
-          let pendingShares = {};
-          let totalShares = 0;
+          let pendingShares = {}; // worker name -> shares sum for this worker
+          let totalShares = 0; // total share of pending rounds
 
           logger.debug(
             logSystem,
             logComponent,
-            "Load shares on each round, calculate totalShares & pendingShares"
+            "Start calculate totalShares & pendingShares"
           );
           startRedisTimer();
           redisClient
@@ -249,10 +250,10 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               endRedisTimer();
 
               if (error) {
-                callback(
+                return callback(
+                  error,
                   "Check finished - redis error with multi get rounds share"
                 );
-                return;
               }
 
               rounds.forEach(function (round, i) {
@@ -289,10 +290,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                     logger.debug(
                       logSystem,
                       logComponent,
-                      "Total shares in round " +
-                        round.height +
-                        ": " +
-                        totalSharesInRound
+                      `Total shares in round ${round.height}: ${totalSharesInRound}`
                     );
 
                     for (var workerAddress in workerShares) {
@@ -313,10 +311,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               logger.debug(
                 logSystem,
                 logComponent,
-                "Total Shares: " +
-                  totalShares +
-                  ", len(PendingShares): " +
+                `Total Shares: ${totalShares}, len(PendingShares): ${
                   Object.keys(pendingShares).length
+                }`
               );
 
               callback(null, workers, rounds, totalShares, pendingShares);
@@ -324,65 +321,53 @@ function SetupForPool(logger, poolOptions, setupFinished) {
         },
 
         /**
-         *  Load balance on pool account and calculate actual reward amount for each miner
+         *  Load balance/reserve on pool account and calculate actual reward amount for each miner
          *  according to their shares
          */
         function (workers, rounds, totalShares, pendingShares, callback) {
           logger.debug(
             logSystem,
             logComponent,
-            "Loading MTR balance and calculate the actual reward for each worker"
+            `Read balance/reserve and calculate the actual reward for each worker`
           );
+          startRPCTimer();
           web3.eth.getEnergy(beneficiary, function (err, bal) {
+            endRPCTimer();
             let poolBalance = new BigNumber(bal);
-            let actualTotalReward = new BigNumber(bal);
             if (err) {
-              console.log("getEnergy error: ", err);
+              logger.warning(
+                logSystem,
+                logComponent,
+                "web3.eth.getEnergy error: " + err
+              );
               return callback(err);
             }
             if (Number.isNaN(Number(bal))) {
               return callback(new Error("could not load balance"));
             }
+
+            // Calculate actual total reward
             const txFee = new BigNumber(
               pendingShares.length * 16000 + 5000
             ).times(500e9);
+            let poolReserve = new BigNumber(0);
             if (beneficiary in workers) {
-              const selfBalance = new BigNumber(
-                workers[beneficiary].balance || 0
-              );
-              const selfReward = new BigNumber(
-                workers[beneficiary].reward || 0
-              );
-              actualTotalReward = poolBalance
-                .minus(selfBalance)
-                .minus(selfReward);
-              actualTotalReward = actualTotalReward.minus(txFee);
-              logger.debug(
-                logSystem,
-                logComponent,
-                "Pool Balance: " +
-                  poolBalance.toFixed(0) +
-                  ", Pool Reserve: " +
-                  selfBalance.plus(selfReward).toFixed(0) +
-                  ", TxFee: " +
-                  txFee.toFixed(0) +
-                  ", Actual TotalReward: " +
-                  actualTotalReward.toFixed(0)
-              );
-            } else {
-              actualTotalReward = actualTotalReward.minus(txFee);
-              logger.debug(
-                logSystem,
-                logComponent,
-                "Pool Balance: " +
-                  poolBalance.toFixed(0) +
-                  ", TxFee: " +
-                  txFee.toFixed(0) +
-                  ", Actual TotalReward: " +
-                  actualTotalReward.toFixed(0)
-              );
+              poolReserve = new BigNumber(workers[beneficiary].balance || 0);
             }
+            const actualTotalReward = poolBalance
+              .minus(poolReserve)
+              .minus(txFee);
+            logger.debug(
+              logSystem,
+              logComponent,
+              `Pool Balance: ${poolBalance.toFixed(
+                0
+              )}, Reserve: ${poolReserve.toFixed(0)}, TxFee: ${txFee.toFixed(
+                0
+              )}, Actual TotalReward: ${actualTotalReward.toFixed(0)}`
+            );
 
+            // if actual total reward is not enough for distribute, skip
             if (actualTotalReward.isLessThanOrEqualTo(0)) {
               logger.debug(logSystem, logComponent, "No reward this interval");
               return callback(new Error("no reward this interval"));
@@ -440,8 +425,10 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 .div(totalShares)
                 .times(poolTax)
                 .div(100);
-              console.log(
-                `worker ${w}, reward delta: ${share}/${totalShares} * ${actualTotalReward.toFixed(
+              logger.debug(
+                logSystem,
+                logComponent,
+                `worker ${w} reward: ${share}/${totalShares} * ${actualTotalReward.toFixed(
                   0
                 )} * ${
                   100 - processingConfig.poolTax
@@ -488,6 +475,13 @@ function SetupForPool(logger, poolOptions, setupFinished) {
               workers[beneficiary].balance = new BigNumber(
                 leftover.plus(workers[beneficiary]).balance.toFixed(0)
               );
+              logger.debug(
+                logSystem,
+                logComponent,
+                `Add reserve ${leftover.toFixed(0)}, totalReserve: ${workers[
+                  beneficiary
+                ].balance.toFixed(0)}`
+              );
             }
 
             callback(null, workers, rounds);
@@ -514,12 +508,16 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             }
 
             logger.debug(logSystem, logComponent, "Prepare to send reward tx");
+            startRPCTimer();
             web3.eth.getBlockNumber(function (err, blockNum) {
+              endRPCTimer();
               if (err) {
                 console.log("getBlockNumber erro: ", err);
                 return callback(err);
               }
+              startRPCTimer();
               web3.eth.getBlock(blockNum, function (err, best) {
+                endRPCTimer();
                 if (err) {
                   console.log("getBlock erro: ", err);
                   return callback(err);
@@ -559,7 +557,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                 const raw = tx.encode();
                 const rawTx = "0x" + raw.toString("hex");
                 logger.debug(logSystem, logComponent, "Sending out reward tx");
+                startRPCTimer();
                 web3.eth.sendSignedTransaction(rawTx, function (err) {
+                  endRPCTimer();
                   if (err) {
                     console.log("sendSignedTransaction error:", err);
                     return callback(err);
