@@ -315,6 +315,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
                   Object.keys(pendingShares).length
                 }`
               );
+              if ("time" in pendingShares) {
+                delete pendingShares["time"];
+              }
 
               callback(null, workers, rounds, totalShares, pendingShares);
             });
@@ -397,6 +400,9 @@ function SetupForPool(logger, poolOptions, setupFinished) {
             for (let w in pendingShares) {
               const share = new BigNumber(pendingShares[w]).toNumber();
               w = w.toLowerCase();
+              if (w == "time") {
+                continue;
+              }
               if (!(w in workers)) {
                 workers[w] = {
                   reward: new BigNumber(0),
