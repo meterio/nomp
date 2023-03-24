@@ -1,8 +1,10 @@
+##
+
+In addition to the code created by Meter Foundation, this code base contains code from various open source projects. It is currently provided for limited demonstration and testing only. The license term will be updated after the final review at the time of the official release.
+
+# Meter NOMP ![NOMP Logo](http://zone117x.github.io/node-open-mining-portal/logo.svg "NOMP Logo")
+
 #### Meter Node Open Mining Portal
-
-Heavily inspired by [node-open-mining-portal](https://github.com/zone117x/node-open-mining-portal).
-
-> In addition to the code created by Meter Foundation, this code base contains code from various open source projects. It is currently provided for limited demonstration and testing only. The license term will be updated after the final review at the time of the official release.
 
 This portal is an extremely efficient, highly scalable, all-in-one, easy to setup cryptocurrency mining pool written
 entirely in Node.js. It contains a stratum poolserver; reward/payment/share processor; and a (_not yet completed_)
@@ -15,6 +17,10 @@ This is beta software. All of the following are things that can change and break
 #### Paid Solution
 
 Usage of this software requires abilities with sysadmin, database admin, coin daemons, and sometimes a bit of programming. Running a production pool can literally be more work than a full-time job.
+
+Payment should be disabled in meter project. The beneficiary address is meter Pos address, not recognized in Pow mining.
+
+**Coin switching & auto-exchanging for payouts in BTC/LTC** to miners is a feature that very likely will not be included in this project.
 
 #### Table of Contents
 
@@ -40,7 +46,7 @@ Usage of this software requires abilities with sysadmin, database admin, coin da
 
 ### Features
 
-- For the pool server it uses the highly efficient [node-stratum-pool](//github.com/meterio/meter-stratum-pool) module which
+- For the pool server it uses the highly efficient [node-stratum-pool](//github.com/zone117x/node-stratum-pool) module which
   supports vardiff, POW & POS, transaction messages, anti-DDoS, IP banning, [several hashing algorithms](//github.com/zone117x/node-stratum-pool#hashing-algorithms-supported).
 
 - The portal has an [MPOS](//github.com/MPOS/php-mpos) compatibility mode so that the it can
@@ -109,12 +115,22 @@ didn't follow the instructions in this README. Please **read the usage instructi
 
 If your pool uses NOMP let us know and we will list your website here.
 
+##### Some pools using NOMP or node-stratum-module:
+
+- http://clevermining.com
+- http://suchpool.pw
+- http://hashfaster.com
+- http://miningpoolhub.com
+- http://kryptochaos.com
+- http://miningpools.tk
+- http://umine.co.uk
+
 # Usage
 
 #### Requirements
 
 - Coin daemon(s) (find the coin's repo and build latest version from source)
-- [Node.js](http://nodejs.org/) v16+ ([follow these installation instructions](https://github.com/joyent/node/wiki/Installing-Node.js-via-package-manager))
+- [Node.js](http://nodejs.org/) v0.10+ ([follow these installation instructions](https://github.com/joyent/node/wiki/Installing-Node.js-via-package-manager))
 - [Redis](http://redis.io/) key-value store v2.6+ ([follow these instructions](http://redis.io/topics/quickstart))
 
 ##### Seriously
@@ -141,18 +157,18 @@ rpcport=8332
 Clone the repository and run `npm update` for all the dependencies to be installed:
 
 ```bash
-git clone https://github.com/meterio/nomp.gits
+git clone https://github.com/meterio/meter-nomp.gits
 cd nomp
-npm install
+npm update
 ```
 
 #### 2) Configuration
 
 ##### Portal config
 
-`config.json` is already prepared for you, usually you don't need to modify anything here.
+Inside the `config_example.json` file, ensure the default configuration will work for your environment, then copy the file to `config.json`.
 
-Detailed explanation for each field:
+Explanation for each field:
 
 ```javascript
 {
@@ -318,13 +334,23 @@ Detailed explanation for each field:
 
 ##### Coin config
 
-Inside the `coins` directory, ensure a json file exists for your coin. If it does not you will have to create it. We've prepared a `meter.json` already, so you don't need to modify anything here neither.
+Inside the `coins` directory, ensure a json file exists for your coin. If it does not you will have to create it.
+Here is an example of the required fields:
 
-```json
+```javascript
 {
-  "name": "Meter",
-  "symbol": "MTR",
-  "algorithm": "sha256"
+    "name": "Meter",
+    "symbol": "MTR",
+    "algorithm": "sha256",
+
+    /* Magic value only required for setting up p2p block notifications. It is found in the daemon
+       source code as the pchMessageStart variable.
+       For example, litecoin mainnet magic: http://git.io/Bi8YFw
+       And for litecoin testnet magic: http://git.io/NXBYJA */
+
+    //"txMessages": false, //options - defaults to false
+
+    //"mposDiffMultiplier": 256, //options - only for x11 coins in mpos mode
 }
 ```
 
@@ -333,7 +359,8 @@ see [these instructions](//github.com/zone117x/node-stratum-pool#module-usage).
 
 ##### Pool config
 
-Detailed pool config will be located in `pool_configs` directory. There's a `meter.json` here that needs your configurations before running the pool.
+Take a look at the example json file inside the `pool_configs` directory. Rename it to `yourcoin.json` and change the
+example fields to fit your setup.
 
 Description of options:
 
@@ -358,7 +385,6 @@ Description of options:
     },
 
     /* this is Pos beneficiary. It is 20 bytes address. Mining reward goes to this address in Pos ssytem. */
-    /* NOTICE: remove the 0x prefix */
     "rewardBeneficiary": "0a05c2d862ca051010698b69b54278cbaf945ccb",
 
     /* reward processing takes care of PoS chain reward distribute  */
@@ -376,7 +402,6 @@ Description of options:
         /* minimum payout threshold, 1e17 means 0.1 MTR */
         "minimumPayment": 1e17,
         /* keystore file absolute path */
-        /* NOTICE: This keystore must relate to `rewardBeneficiary` */
         "keystoreFile": "/home/ubuntu/exposed.keystore",
         /* passphrase for keystore file */
         "passphrase": "",
