@@ -454,7 +454,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
             // filter out actual payees with amount over minimum threshold
             // if amount < minimum threshold, add them to balance and payout next round
-            logger.debug("Issue Plan");
+            logger.debug(logSystem, logComponent, "Issue Plan");
             for (w in workers) {
               if (workers[w].issue !== false) {
                 const amount = workers[w].reward.plus(workers[w].balance);
