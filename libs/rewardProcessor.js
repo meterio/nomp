@@ -25,12 +25,12 @@ module.exports = function (logger) {
     enabledPools,
     function (coin, callback) {
       SetupForPool(logger, poolConfigs[coin], function (setupResults) {
-        console.log("setup resutl: ", setupResults);
-        callback(null, setupResults);
+        console.log("setup result: ", setupResults);
+        callback(setupResults);
       });
     },
-    function (err, coins) {
-      console.log("coins", coins);
+    function (coins) {
+      console.log("reward enabled on coins", coins);
       coins.forEach(function (coin) {
         var poolOptions = poolConfigs[coin];
         var processingConfig = poolOptions.rewardProcessing;
