@@ -170,20 +170,27 @@ module.exports = function (logger) {
                   logger[severity](logSystem, c, message);
                 }
               );
-              // daemon.cmd('dumpprivkey', [coinInfo.address], function(result){
-              //     if (result[0].error){
-              //         logger.error(logSystem, c, 'Could not dumpprivkey for ' + c + ' ' + JSON.stringify(result[0].error));
-              //         cback();
-              //         return;
-              //     }
+              daemon.cmd("dumpprivkey", [coinInfo.address], function (result) {
+                if (result[0].error) {
+                  logger.error(
+                    logSystem,
+                    c,
+                    "Could not dumpprivkey for " +
+                      c +
+                      " " +
+                      JSON.stringify(result[0].error)
+                  );
+                  cback();
+                  return;
+                }
 
-              //     var vBytePub = util.getVersionByte(coinInfo.address)[0];
-              //     var vBytePriv = util.getVersionByte(result[0].response)[0];
+                var vBytePub = util.getVersionByte(coinInfo.address)[0];
+                var vBytePriv = util.getVersionByte(result[0].response)[0];
 
-              //     coinBytes[c] = vBytePub.toString() + ',' + vBytePriv.toString();
-              //     coinsForRedis[c] = coinBytes[c];
-              //     cback();
-              // });
+                coinBytes[c] = vBytePub.toString() + "," + vBytePriv.toString();
+                coinsForRedis[c] = coinBytes[c];
+                cback();
+              });
             },
             function (err) {
               callback(null, client, coinBytes, coinsForRedis);
