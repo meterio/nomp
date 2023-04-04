@@ -31,7 +31,7 @@
     "url": "https://github.com/zone117x/node-open-mining-portal.git"
   },
   "dependencies": {
-    "async": "1.5.2",
+    "async": "3.2.4",
     "bignumber.js": "^9.1.1",
     "bluebird": "^3.5.3",
     "body-parser": "*",
@@ -44,12 +44,11 @@
     "meter-stratum-pool": "^0.2.13",
     "mysql": "*",
     "node-json-minify": "*",
-    "node-watch": "0.6.4",
+    "node-watch": "^0.7.3",
     "nonce": "*",
     "redis": "0.12.1",
     "request": "2.69.0",
     "@meterio/devkit": "^1.7.1",
-    "ethers": "^5.4.4",
     "meterify": "^1.4.7",
     "web3": "^1.2.11"
   },
