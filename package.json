@@ -1,55 +1,55 @@
 {
-    "name": "node-open-mining-portal",
-    "version": "0.0.4",
-    "description": "An extremely efficient, highly scalable, all-in-one, easy to setup cryptocurrency mining pool",
-    "keywords": [
-        "stratum",
-        "mining",
-        "pool",
-        "server",
-        "poolserver",
-        "bitcoin",
-        "litecoin",
-        "scrypt"
-    ],
-    "homepage": "https://github.com/zone117x/node-open-mining-portal",
-    "bugs": {
-        "url": "https://github.com/zone117x/node-open-mining-portal/issues"
-    },
-    "license": "GPL-2.0",
-    "author": "Matthew Little",
-    "contributors": [
-        "vekexasia",
-        "TheSeven"
-    ],
-    "main": "init.js",
-    "bin": {
-        "block-notify": "./scripts/blockNotify.js"
-    },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/zone117x/node-open-mining-portal.git"
-    },
-    "dependencies": {
-        "async": "1.5.2",
-        "bignum": "^0.13.0",
-        "bluebird": "^3.5.3",
-        "body-parser": "*",
-        "colors": "*",
-        "compression": "*",
-        "dateformat": "1.0.12",
-        "dot": "*",
-        "express": "*",
-        "extend": "*",
-        "meter-stratum-pool": "0.1.1",
-        "mysql": "*",
-        "node-json-minify": "*",
-        "node-watch": "0.5.9",
-        "nonce": "*",
-        "redis": "0.12.1",
-        "request": "^2.88.0"
-    },
-    "engines": {
-        "node": ">=0.10"
-    }
+  "name": "node-open-mining-portal",
+  "version": "0.0.4",
+  "description": "An extremely efficient, highly scalable, all-in-one, easy to setup cryptocurrency mining pool",
+  "keywords": [
+    "stratum",
+    "mining",
+    "pool",
+    "server",
+    "poolserver",
+    "bitcoin",
+    "litecoin",
+    "scrypt"
+  ],
+  "homepage": "https://github.com/zone117x/node-open-mining-portal",
+  "bugs": {
+    "url": "https://github.com/zone117x/node-open-mining-portal/issues"
+  },
+  "license": "GPL-2.0",
+  "author": "Matthew Little",
+  "contributors": [
+    "vekexasia",
+    "TheSeven"
+  ],
+  "main": "init.js",
+  "bin": {
+    "block-notify": "./scripts/blockNotify.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zone117x/node-open-mining-portal.git"
+  },
+  "dependencies": {
+    "async": "1.5.2",
+    "bignumber.js": "^8.0.0",
+    "bluebird": "^3.5.3",
+    "body-parser": "*",
+    "colors": "*",
+    "compression": "*",
+    "dateformat": "1.0.12",
+    "dot": "*",
+    "express": "*",
+    "extend": "*",
+    "meter-stratum-pool": "0.2.13",
+    "mysql": "*",
+    "node-json-minify": "*",
+    "node-watch": "0.5.9",
+    "nonce": "*",
+    "redis": "0.12.1",
+    "request": "^2.88.0"
+  },
+  "engines": {
+    "node": ">=0.10"
+  }
 }
