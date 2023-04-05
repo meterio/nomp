@@ -47,7 +47,7 @@
     "node-watch": "^0.7.3",
     "nonce": "*",
     "redis": "0.12.1",
-    "request": "2.69.0",
+    "request": "2.88.2",
     "@meterio/devkit": "^1.7.1",
     "meterify": "^1.4.7",
     "web3": "^1.2.11"
