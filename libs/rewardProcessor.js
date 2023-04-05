@@ -98,8 +98,27 @@ function SetupForPool(logger, poolOptions, setupFinished) {
       },
       function (callback) {
         web3.eth.getEnergy(beneficiary, function (err, balance) {
-          logger.debug(logSystem, logComponent, "balance: " + err + balance);
-          callback(null);
+          logger.debug(logSystem, logComponent, "balance: " + balance);
+          const redisCommands = [
+            ["hset", coin + ":balances", beneficiary, Number(balance)],
+          ];
+          logger.debug(
+            logSystem,
+            logComponent,
+            "Set base balance for beneficiary to " + Number(balance)
+          );
+          redisClient.multi(redisCommands).exec(function (error, results) {
+            if (error) {
+              logger.error(
+                logSystem,
+                logComponent,
+                "Could not set base balance for beneficiary " +
+                  JSON.stringify(error)
+              );
+              return callback(error);
+            }
+            return callback(null);
+          });
         });
       },
     ],
