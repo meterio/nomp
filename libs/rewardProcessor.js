@@ -65,7 +65,8 @@ function SetupForPool(logger, poolOptions, setupFinished) {
 
   var logSystem = "Rewards";
   var logComponent = coin;
-  var beneficiary = "0x" + poolOptions.rewardBeneficiary.toLowerCase();
+  var beneficiary =
+    "0x" + poolOptions.rewardBeneficiary.toLowerCase().replace("0x", "");
 
   logger.debug(
     logSystem,
