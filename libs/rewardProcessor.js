@@ -42,7 +42,7 @@ module.exports = function (logger) {
           logComponent,
           "Reward processing setup to run every " +
             processingConfig.rewardInterval +
-            " second(s) with daemon (" +
+            " minute(s) with daemon (" +
             processingConfig.restfulURL +
             ") and redis (" +
             poolOptions.redis.host +
@@ -149,7 +149,7 @@ function SetupForPool(logger, poolOptions, setupFinished) {
         } catch (e) {
           throw e;
         }
-      }, processingConfig.rewardInterval * 1000);
+      }, processingConfig.rewardInterval * 1000 * 60);
       setTimeout(processRewards, 100);
       setupFinished(true);
     }

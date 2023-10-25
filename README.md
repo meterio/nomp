@@ -366,7 +366,7 @@ Description of options:
         /* it's optional to enable reward processing, if it's on, it will automatically distribute PoS reward
         to miners proportional to their shares in past rounds*/
         "enabled": true,
-        /* interval for reward distribution */
+        /* interval for reward distribution in minutes */
         "rewardInterval": 20,
 
         /* pool will receive 3% of all mined rewards if this is set to 3 */
@@ -376,7 +376,7 @@ Description of options:
         /* minimum payout threshold, 1e17 means 0.1 MTR */
         "minimumPayment": 1e17,
         /* keystore file absolute path */
-        /* NOTICE: This keystore must relate to `rewardBeneficiary` */
+        /* NOTICE: This keystore MUST relate to `rewardBeneficiary` */
         "keystoreFile": "/home/ubuntu/exposed.keystore",
         /* passphrase for keystore file */
         "passphrase": "",
