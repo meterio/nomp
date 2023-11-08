@@ -41,7 +41,7 @@
     "dot": "*",
     "express": "*",
     "extend": "*",
-    "meter-stratum-pool": "^0.2.13",
+    "meter-stratum-pool": "^0.2.16",
     "mysql": "*",
     "node-json-minify": "*",
     "node-watch": "^0.7.3",
